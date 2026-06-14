@@ -983,6 +983,7 @@ func renderVerifyCommand(opts *globalOptions) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&renderPath, "render", "renders/rough-preview.mp4", "render path")
+	cmd.Flags().StringVar(&renderPath, "input", "renders/rough-preview.mp4", "alias for --render")
 	return cmd
 }
 
