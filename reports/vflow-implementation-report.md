@@ -27,7 +27,7 @@ Date: 2026-06-14
 - Color review writes `reports/color-grade-report.json` without requiring live Gemini, and live Gemini can enrich it when credentials work.
 - Public-repo support files: `AGENTS.md`, root `SKILL.md`, bundled workflow skill, schemas, CI, release workflow, GoReleaser config, install script, and research notes.
 - `upgrade` now checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage a release asset into a cache with `--commit`.
-- Public release `v0.1.0` is published with GoReleaser platform archives and `checksums.txt`.
+- Public release `v0.1.1` is published with GoReleaser platform archives and `checksums.txt`.
 - `audit cli` is backed by `internal/audit` evidence checks instead of a hardcoded score.
 
 ## Verification Commands
@@ -78,7 +78,7 @@ Results:
 - `schema --validate` returned `status: valid` and `command_count: 54`.
 - `doctor` found `ffmpeg`, `ffprobe`, and `python3`; `OPENAI_API_KEY` and `GEMINI_API_KEY` were present, all other optional provider env vars were absent.
 - `audit cli` returned `score: 100`, `threshold: 85`, `status: pass`.
-- Release workflow published `v0.1.0`; `upgrade --commit` staged `vflow_0.1.0_darwin_arm64.tar.gz` from the public release into `tmp/upgrade-proof`.
+- Release workflow published `v0.1.1`; `upgrade --commit` staged `vflow_0.1.1_darwin_arm64.tar.gz` from the public release into `tmp/upgrade-proof`.
 
 Additional proof commands:
 
@@ -213,21 +213,21 @@ Results:
 Release:
 
 ```text
-https://github.com/nerveband/vflow/releases/tag/v0.1.0
+https://github.com/nerveband/vflow/releases/tag/v0.1.1
 ```
 
 Proof commands:
 
 ```bash
-gh release view v0.1.0 --repo nerveband/vflow --json tagName,url,assets,publishedAt,isDraft,isPrerelease
+gh release view v0.1.1 --repo nerveband/vflow --json tagName,url,assets,publishedAt,isDraft,isPrerelease
 go run ./cmd/vflow upgrade --commit --cache-dir tmp/upgrade-proof --timeout 2m --format json --format-error json
 ```
 
 Results:
 
-- Release `v0.1.0` is public, not draft, not prerelease.
+- Release `v0.1.1` is public, not draft, not prerelease.
 - Assets include `checksums.txt`, Darwin/Linux tarballs, and Windows zip archives for amd64 and arm64.
-- `upgrade --commit` returned `status: staged`, `latest_version: v0.1.0`, asset `vflow_0.1.0_darwin_arm64.tar.gz`, and staged path `tmp/upgrade-proof/v0.1.0/vflow_0.1.0_darwin_arm64.tar.gz`.
+- `upgrade --commit` returned `status: staged`, `latest_version: v0.1.1`, asset `vflow_0.1.1_darwin_arm64.tar.gz`, and staged path `tmp/upgrade-proof/v0.1.1/vflow_0.1.1_darwin_arm64.tar.gz`.
 
 ## Real CAIR-GA Copied Fixture
 
