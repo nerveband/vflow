@@ -36,7 +36,8 @@ This audit checks the active goal against current repo state and command output.
 - `nle accept --commit` writes an explicit accepted-review artifact; `nle apply --commit` can merge accepted needs-review changes from that artifact.
 - `color review` writes `reports/color-grade-report.json` without requiring Gemini.
 - `project index --path` writes a SQLite/FTS index via `modernc.org/sqlite` and project `reports/provenance.json`; `transcript search --data-source local` returns FTS transcript hits with project IDs and frame ranges.
-- `upgrade` checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage release assets; GoReleaser config and a tag-triggered release workflow are present.
+- `upgrade` checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and staged the public `v0.1.0` Darwin arm64 release asset into `tmp/upgrade-proof`.
+- Public release `https://github.com/nerveband/vflow/releases/tag/v0.1.0` exists with platform archives and `checksums.txt`.
 - `audit cli` now runs a weighted evidence scorecard from `internal/audit` instead of returning a hardcoded scaffold score.
 
 ## Not Yet Fully Proven
@@ -44,9 +45,8 @@ This audit checks the active goal against current repo state and command output.
 - NLE roundtrip support is structured and tested for representative artifacts, but it is not yet exhaustively proven against real exported projects from every target editor.
 - Live Gemini QA/color cannot complete until the expired runtime key is rotated.
 - Live ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia provider calls cannot be proven until those runtime keys are supplied.
-- `vflow upgrade --commit` cannot stage a real public asset until a GitHub release with GoReleaser artifacts and checksums is published.
 - Editor-specific NLE proof still needs real Resolve/FCP/Premiere/Shotcut/OTIO exported timelines for broader compatibility coverage.
 
 ## Current Decision
 
-The CLI implementation is hardened to the 85-point target and all feasible local/provider paths were implemented. Remaining gaps are external proof dependencies: expired Gemini key, absent optional STT provider keys, no published GitHub release artifact, and broader real-editor NLE roundtrip fixtures.
+The CLI implementation is hardened to the 85-point target and all feasible local/provider paths were implemented. Remaining gaps are external proof dependencies: expired Gemini key, absent optional STT provider keys, and broader real-editor NLE roundtrip fixtures.

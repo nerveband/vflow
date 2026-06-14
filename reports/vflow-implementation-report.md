@@ -27,6 +27,7 @@ Date: 2026-06-14
 - Color review writes `reports/color-grade-report.json` without requiring live Gemini, and live Gemini can enrich it when credentials work.
 - Public-repo support files: `AGENTS.md`, root `SKILL.md`, bundled workflow skill, schemas, CI, release workflow, GoReleaser config, install script, and research notes.
 - `upgrade` now checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage a release asset into a cache with `--commit`.
+- Public release `v0.1.0` is published with GoReleaser platform archives and `checksums.txt`.
 - `audit cli` is backed by `internal/audit` evidence checks instead of a hardcoded score.
 
 ## Verification Commands
@@ -77,7 +78,7 @@ Results:
 - `schema --validate` returned `status: valid` and `command_count: 54`.
 - `doctor` found `ffmpeg`, `ffprobe`, and `python3`; `OPENAI_API_KEY` and `GEMINI_API_KEY` were present, all other optional provider env vars were absent.
 - `audit cli` returned `score: 100`, `threshold: 85`, `status: pass`.
-- `upgrade` reached the public GitHub repo metadata and reported `status: no_release` because no release has been published yet.
+- Release workflow published `v0.1.0`; `upgrade --commit` staged `vflow_0.1.0_darwin_arm64.tar.gz` from the public release into `tmp/upgrade-proof`.
 
 Additional proof commands:
 
@@ -207,6 +208,27 @@ Results:
 - Proxy render wrote `work/live-smoke/media-render/media/proxy.mp4`.
 - Contact sheet wrote `work/live-smoke/media-render/reports/contact-sheet.jpg`.
 
+## Public Release And Upgrade Proof
+
+Release:
+
+```text
+https://github.com/nerveband/vflow/releases/tag/v0.1.0
+```
+
+Proof commands:
+
+```bash
+gh release view v0.1.0 --repo nerveband/vflow --json tagName,url,assets,publishedAt,isDraft,isPrerelease
+go run ./cmd/vflow upgrade --commit --cache-dir tmp/upgrade-proof --timeout 2m --format json --format-error json
+```
+
+Results:
+
+- Release `v0.1.0` is public, not draft, not prerelease.
+- Assets include `checksums.txt`, Darwin/Linux tarballs, and Windows zip archives for amd64 and arm64.
+- `upgrade --commit` returned `status: staged`, `latest_version: v0.1.0`, asset `vflow_0.1.0_darwin_arm64.tar.gz`, and staged path `tmp/upgrade-proof/v0.1.0/vflow_0.1.0_darwin_arm64.tar.gz`.
+
 ## Real CAIR-GA Copied Fixture
 
 Fixture:
@@ -255,4 +277,3 @@ Hardening pass note: the latest run only repeated `media probe --commit` and `tr
 - Broaden NLE writer/parser fixtures against real Resolve, Final Cut Pro, Premiere, Shotcut/MLT, and OTIO roundtrips; current coverage is structured and tested but not exhaustive for every editor feature.
 - Run live ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia calls after those runtime keys are supplied.
 - Rotate/renew the expired Gemini key, then rerun live `qa doctor`, `qa analyze --upload files`, and `color review`.
-- Publish a GitHub release with GoReleaser artifacts and checksums so `vflow upgrade --commit` can stage a real public release asset.
