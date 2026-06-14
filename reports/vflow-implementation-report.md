@@ -11,15 +11,22 @@ Date: 2026-06-14
 - Durable JSON job ledger under `project/jobs/` with `jobs list/get/resume`; committed preview renders now write job records.
 - SQLite/FTS project index using `modernc.org/sqlite`: `project index --path` writes `~/.vflow/index.sqlite` or `$VFLOW_INDEX_PATH`, plus project `reports/provenance.json`; `transcript search --data-source local` reads the FTS index.
 - Atomic file artifact delivery with overwrite gating.
+- Artifact delivery now supports `stdout`, atomic `file:<path>`, and committed `webhook:<url>` POST delivery.
 - Live `ffprobe` source review, ffmpeg preview renders, ffmpeg LUT renders, render verification, and NLE sidecars.
+- `media proxy --commit` and `media samples --commit` now execute ffmpeg with configurable binary paths and keep dry-run JSON plans.
 - Render verification parses ffprobe JSON/evidence for duration, resolution, codec, audio streams, and frame count.
 - Live OpenAI STT adapter using `OPENAI_API_KEY` and `/v1/audio/transcriptions`; secrets are env-only.
+- Live STT adapters for OpenAI, ElevenLabs, Deepgram, AssemblyAI, Gladia, and Soniox with provider sidecars and canonical frame-word normalization.
+- Transcript bakeoff can run live providers with `--live --commit`, records completed/skipped/failed provider status, and writes `reports/provider-bakeoff.json`.
 - Gemini QA/color hooks using `GEMINI_API_KEY`, `GOOGLE_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` with `x-goog-api-key`; provider errors are compact and redacted.
+- Gemini QA now supports the Files API resumable upload path and `qa analyze --upload files`.
 - NLE export/import/diff/apply surfaces for FCPXML, EDL, OTIO, MLT, Resolve alias, Premiere XMEML, and sidecars, with roundtrip segment metadata.
 - NLE import parses supported raw timelines into neutral change records, diff classifies safe/review/blocked buckets, and guarded apply writes `imports/applied-nle-changes.json` only when changes are safe to commit.
 - Cleanup review and NLE diff can deliver HTML review artifacts.
 - Color review writes `reports/color-grade-report.json` without requiring live Gemini, and live Gemini can enrich it when credentials work.
 - Public-repo support files: `AGENTS.md`, root `SKILL.md`, bundled workflow skill, schemas, CI, GoReleaser config, install script, and research notes.
+- `upgrade` now checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage a release asset into a cache with `--commit`.
+- `audit cli` is backed by `internal/audit` evidence checks instead of a hardcoded score.
 
 ## Verification Commands
 
@@ -39,7 +46,7 @@ Current results:
 - `make lint` / `go vet ./...` passed.
 - `schema --validate` returned `status: valid` and `command_count: 53`.
 - `doctor` found `ffmpeg`, `ffprobe`, and `python3`; `OPENAI_API_KEY` and `GEMINI_API_KEY` were present, all other optional provider env vars were absent.
-- `audit cli` returned score `72` with pass threshold `65`.
+- `audit cli` returned score `100` with pass threshold `85`.
 
 Continuation verification also passed:
 
@@ -50,6 +57,26 @@ go run ./cmd/vflow schema --validate --format json
 go run ./cmd/vflow audit cli --format json
 go run ./cmd/vflow doctor --format json
 ```
+
+Hardening verification on 2026-06-14:
+
+```bash
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json
+go run ./cmd/vflow doctor --format json
+go run ./cmd/vflow audit cli --format json
+go run ./cmd/vflow upgrade --format json --timeout 30s
+```
+
+Results:
+
+- `go test ./...` passed across all packages.
+- `go vet ./...` passed.
+- `schema --validate` returned `status: valid` and `command_count: 53`.
+- `doctor` found `ffmpeg`, `ffprobe`, and `python3`; `OPENAI_API_KEY` and `GEMINI_API_KEY` were present, all other optional provider env vars were absent.
+- `audit cli` returned `score: 100`, `threshold: 85`, `status: pass`.
+- `upgrade` reached the public GitHub repo metadata and reported `status: no_release` because no release has been published yet.
 
 Additional proof commands:
 
@@ -140,15 +167,44 @@ NLE proof result: all seven exports wrote sidecars with two compiled segments; F
 
 ## Live Gemini Result
 
-Live Gemini calls were attempted with the runtime env key:
+Live Gemini calls were attempted with the runtime env key, including the new Files API upload path:
 
 ```bash
 go run ./cmd/vflow qa doctor --provider gemini --live --commit --format json --format-error json
-go run ./cmd/vflow qa analyze --project tmp/live-demo --render tmp/live-demo/renders/rough-preview.mp4 --provider gemini --live --commit --format json --format-error json
+go run ./cmd/vflow qa analyze --project work/live-smoke/gemini-qa --render work/live-smoke/gemini-qa/renders/rough-preview.mp4 --provider gemini --model gemini-3.5-flash --upload files --live --commit --timeout 3m --format json --format-error json
 go run ./cmd/vflow color review --input tmp/live-demo/renders/rough-preview-graded.mp4 --provider gemini --live --commit --format json --format-error json
 ```
 
 Provider result: Google returned `400 Bad Request` with `API key expired. Please renew the API key.` The CLI surfaced this as structured `QA_DOCTOR_FAILED`, `GEMINI_QA_FAILED`, and `COLOR_REVIEW_FAILED` errors without printing the raw key.
+
+## Live STT Provider Result
+
+Live OpenAI STT and provider bakeoff were run against a tiny copied fixture under ignored `work/live-smoke/`:
+
+```bash
+go run ./cmd/vflow transcript create --project work/live-smoke/openai-stt --provider openai --source work/live-smoke/openai-stt/media/source.mp4 --live --commit --timeout 3m --format json --format-error json
+go run ./cmd/vflow transcript bakeoff --project work/live-smoke/openai-stt --source work/live-smoke/openai-stt/media/source.mp4 --providers openai,elevenlabs,soniox,assemblyai,deepgram,gladia,local --live --commit --timeout 3m --format json --format-error json
+```
+
+Results:
+
+- OpenAI STT completed and wrote `work/live-smoke/openai-stt/transcript/words.json` plus `work/live-smoke/openai-stt/transcript/openai-transcription.json`.
+- Live bakeoff completed OpenAI with `model: gpt-4o-transcribe`; ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia were marked `skipped_missing_key` because those runtime env vars were absent.
+- Bakeoff wrote `work/live-smoke/openai-stt/reports/provider-bakeoff.json`.
+
+## Live Media Commit Result
+
+Actual ffmpeg proxy and contact-sheet commands were run against a tiny copied fixture under ignored `work/live-smoke/`:
+
+```bash
+go run ./cmd/vflow media proxy --project work/live-smoke/media-render --source work/live-smoke/media-render/media/source.mp4 --commit --overwrite --format json
+go run ./cmd/vflow media samples --project work/live-smoke/media-render --source work/live-smoke/media-render/media/source.mp4 --count 6 --deliver file:work/live-smoke/media-render/reports/contact-sheet.jpg --commit --overwrite --format json
+```
+
+Results:
+
+- Proxy render wrote `work/live-smoke/media-render/media/proxy.mp4`.
+- Contact sheet wrote `work/live-smoke/media-render/reports/contact-sheet.jpg`.
 
 ## Real CAIR-GA Copied Fixture
 
@@ -191,10 +247,12 @@ Fixture proof:
 - Project index wrote SQLite/FTS rows for one project, four sources, 19,273 transcript words, 15 artifacts, and four NLE events.
 - Local FTS search returned five `Executive` transcript matches from the fixture with canonical frame ranges.
 
+Hardening pass note: the latest run only repeated `media probe --commit` and `transcript import --commit` against the copied `media/source-4k` files. No render, transcode, or audio extraction was run against the CAIR-GA fixture in this pass.
+
 ## Remaining Work
 
 - Broaden NLE writer/parser fixtures against real Resolve, Final Cut Pro, Premiere, Shotcut/MLT, and OTIO roundtrips; current coverage is structured and tested but not exhaustive for every editor feature.
 - Add accepted-review artifact semantics for needs-review NLE changes before canonical timeline mutation.
-- Add live adapters for ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia once runtime keys are available.
-- Add Gemini Files API upload path for large videos after rotating the expired key.
-- Raise `audit cli` target from 72 toward the planned 80+ alpha threshold.
+- Run live ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia calls after those runtime keys are supplied.
+- Rotate/renew the expired Gemini key, then rerun live `qa doctor`, `qa analyze --upload files`, and `color review`.
+- Publish a GitHub release with GoReleaser artifacts and checksums so `vflow upgrade --commit` can stage a real public release asset.

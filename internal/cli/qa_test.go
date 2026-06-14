@@ -17,3 +17,23 @@ func TestQADoctorDryRunWithoutKeyReturnsWarning(t *testing.T) {
 		}
 	}
 }
+
+func TestQAAnalyzeDryRunDefaultsToFilesUpload(t *testing.T) {
+	out, errOut, code := runCLI(t, "qa", "analyze", "--project", t.TempDir(), "--render", "../../fixtures/media/tiny/source.mp4", "--provider", "gemini", "--model", "gemini-3.5-flash", "--format", "json")
+	if code != 0 {
+		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(out, `"upload": "files"`) {
+		t.Fatalf("expected files upload mode: %s", out)
+	}
+}
+
+func TestQAAnalyzeRejectsInvalidUploadMode(t *testing.T) {
+	_, errOut, code := runCLI(t, "qa", "analyze", "--upload", "bad", "--format", "json", "--format-error", "json")
+	if code != 4 {
+		t.Fatalf("expected validation error, got %d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(errOut, "INVALID_ENUM") {
+		t.Fatalf("expected invalid enum error: %s", errOut)
+	}
+}

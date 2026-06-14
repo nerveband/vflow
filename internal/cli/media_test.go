@@ -78,3 +78,67 @@ func TestMediaProbeFFProbeFailureUsesStructuredJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestMediaProxyCommitRunsConfiguredFFmpeg(t *testing.T) {
+	dir := t.TempDir()
+	ffmpeg := fakeCLIFFmpeg(t, dir)
+	source := filepath.Join(dir, "media", "source.mp4")
+	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCLI(t, "media", "proxy", "--project", dir, "--source", source, "--ffmpeg-path", ffmpeg, "--commit", "--overwrite", "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"status": "written"`) {
+		t.Fatalf("expected written status: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "media", "proxy.mp4")); err != nil {
+		t.Fatalf("expected proxy output: %v", err)
+	}
+}
+
+func TestMediaSamplesCommitRunsConfiguredFFmpeg(t *testing.T) {
+	dir := t.TempDir()
+	ffmpeg := fakeCLIFFmpeg(t, dir)
+	source := filepath.Join(dir, "media", "source.mp4")
+	output := filepath.Join(dir, "reports", "contact.jpg")
+	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCLI(t, "media", "samples", "--project", dir, "--source", source, "--ffmpeg-path", ffmpeg, "--count", "6", "--deliver", "file:"+output, "--commit", "--overwrite", "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"status": "written"`) {
+		t.Fatalf("expected written status: %s", out)
+	}
+	if _, err := os.Stat(output); err != nil {
+		t.Fatalf("expected contact sheet: %v", err)
+	}
+}
+
+func fakeCLIFFmpeg(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "ffmpeg")
+	script := `#!/bin/sh
+out=""
+for arg do
+  out="$arg"
+done
+mkdir -p "$(dirname "$out")"
+printf fake > "$out"
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}

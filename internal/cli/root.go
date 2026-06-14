@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
+	vaudit "github.com/nerveband/vflow/internal/audit"
 	vcleanup "github.com/nerveband/vflow/internal/cleanup"
 	vcolor "github.com/nerveband/vflow/internal/color"
 	vconfig "github.com/nerveband/vflow/internal/config"
@@ -26,6 +28,7 @@ import (
 	vrender "github.com/nerveband/vflow/internal/render"
 	vtimeline "github.com/nerveband/vflow/internal/timeline"
 	vtranscript "github.com/nerveband/vflow/internal/transcript"
+	vupdate "github.com/nerveband/vflow/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -239,14 +242,7 @@ func auditCommand(opts *globalOptions) *cobra.Command {
 		Use:   "cli",
 		Short: "Run CLI agent-readiness audit",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return writeOutput(cmd, opts, "audit cli", map[string]any{
-				"score":     72,
-				"threshold": 65,
-				"status":    "pass",
-				"checks": map[string]bool{
-					"structured_json": true, "schema": true, "agent_context": true, "dry_run_commit": true, "provider_redaction": true, "nle_sidecar": true,
-				},
-			})
+			return writeOutput(cmd, opts, "audit cli", vaudit.Run("."))
 		},
 	})
 	return parent
@@ -495,25 +491,49 @@ func artifactsCommand(opts *globalOptions) *cobra.Command {
 				return writeStructuredError(cmd, opts, verrors.External("ARTIFACT_DELIVER_FAILED", err.Error(), "Check artifact and delivery path", false))
 			}
 			status = res.Status
+		} else if opts.Commit && strings.HasPrefix(deliver, "webhook:") {
+			outputPath = strings.TrimPrefix(deliver, "webhook:")
+			res, err := output.DeliverWebhook(input, outputPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("ARTIFACT_WEBHOOK_FAILED", err.Error(), "Check webhook URL and receiver status", true))
+			}
+			return writeOutput(cmd, opts, "artifacts deliver", map[string]any{"status": res.Status, "input": filepath.ToSlash(input), "deliver": deliver, "output": outputPath, "http_status": res.HTTPStatus})
 		} else if opts.Commit && deliver == "stdout" {
 			status = "available_on_stdout"
 		}
 		return writeOutput(cmd, opts, "artifacts deliver", map[string]any{"status": status, "input": filepath.ToSlash(input), "deliver": deliver, "output": filepath.ToSlash(outputPath)})
 	}}
 	deliverCmd.Flags().StringVar(&input, "input", "", "artifact path")
-	deliverCmd.Flags().StringVar(&deliver, "deliver", "stdout", "delivery target: stdout or file:<path>")
+	deliverCmd.Flags().StringVar(&deliver, "deliver", "stdout", "delivery target: stdout, file:<path>, or webhook:<url>")
 	parent.AddCommand(deliverCmd)
 	return parent
 }
 
 func upgradeCommand(opts *globalOptions) *cobra.Command {
-	return &cobra.Command{Use: "upgrade", Short: "Upgrade vflow", RunE: func(cmd *cobra.Command, args []string) error {
-		status := "planned"
-		if opts.Commit {
-			status = "no_release_configured"
+	var repo, metadataURL, cacheDir string
+	cmd := &cobra.Command{Use: "upgrade", Short: "Upgrade vflow", RunE: func(cmd *cobra.Command, args []string) error {
+		ctx, cancel, err := commandContext(opts.Timeout)
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.Validation("INVALID_TIMEOUT", err.Error(), "Use a Go duration such as 30s, 5m, or 20m", false))
 		}
-		return writeOutput(cmd, opts, "upgrade", map[string]any{"status": status, "repo": "github.com/nerveband/vflow"})
+		defer cancel()
+		upgradeOpts := vupdate.Options{Repo: repo, MetadataURL: metadataURL, CacheDir: cacheDir, Current: Version, Commit: Commit}
+		report, err := vupdate.Check(ctx, upgradeOpts)
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("UPGRADE_CHECK_FAILED", err.Error(), "Check network access, GitHub release metadata, or --metadata-url", true))
+		}
+		if opts.Commit {
+			report, err = vupdate.Stage(ctx, report, upgradeOpts)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("UPGRADE_STAGE_FAILED", err.Error(), "Check release asset URL, cache directory, and network access", true))
+			}
+		}
+		return writeOutput(cmd, opts, "upgrade", report)
 	}}
+	cmd.Flags().StringVar(&repo, "repo", "github.com/nerveband/vflow", "GitHub repository")
+	cmd.Flags().StringVar(&metadataURL, "metadata-url", "", "override latest release metadata URL")
+	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "upgrade asset cache directory")
+	return cmd
 }
 
 func schemaCommand(opts *globalOptions) *cobra.Command {
@@ -833,44 +853,84 @@ func mediaIngestCommand(opts *globalOptions) *cobra.Command {
 }
 
 func mediaProxyCommand(opts *globalOptions) *cobra.Command {
-	var projectPath, preset string
+	var projectPath, preset, source, ffmpegPath string
 	cmd := &cobra.Command{
 		Use:   "proxy",
 		Short: "create a proxy render plan",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			plan := vmedia.RenderPlan{
-				Command:     []string{"ffmpeg", "-i", filepath.Join(projectPath, "media", "source.mp4"), "-vf", "scale=1920:-2", filepath.Join(projectPath, "media", "proxy.mp4")},
-				OutputPath:  filepath.Join(projectPath, "media", "proxy.mp4"),
-				Description: "proxy generation plan",
+			if source == "" {
+				source = filepath.Join(projectPath, "media", "source.mp4")
 			}
-			if preset != "" {
-				plan.Description = "proxy generation plan: " + preset
+			proxyOpts := vmedia.ProxyOptions{
+				FFmpegPath: ffmpegPath,
+				SourcePath: source,
+				OutputPath: filepath.Join(projectPath, "media", "proxy.mp4"),
+				Preset:     preset,
+				Overwrite:  opts.Overwrite,
+			}
+			plan := vmedia.BuildProxyPlan(proxyOpts)
+			if opts.Commit {
+				ctx, cancel, err := commandContext(opts.Timeout)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("INVALID_TIMEOUT", err.Error(), "Use a Go duration such as 30s, 5m, or 20m", false))
+				}
+				defer cancel()
+				plan, err = vmedia.RunProxy(ctx, proxyOpts)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("MEDIA_PROXY_FAILED", err.Error(), "Check ffmpeg, source path, and output permissions", true))
+				}
 			}
 			return writeOutput(cmd, opts, "media proxy", plan)
 		},
 	}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&preset, "preset", "edit-1080p", "proxy preset")
+	cmd.Flags().StringVar(&source, "source", "", "source media path")
+	cmd.Flags().StringVar(&ffmpegPath, "ffmpeg-path", "", "ffmpeg binary path")
 	return cmd
 }
 
 func mediaSamplesCommand(opts *globalOptions) *cobra.Command {
-	var projectPath, deliver string
+	var projectPath, deliver, source, ffmpegPath string
 	var count int
 	cmd := &cobra.Command{
 		Use:   "samples",
 		Short: "plan representative frame extraction",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			frames := make([]string, 0, count)
-			for i := 0; i < count; i++ {
-				frames = append(frames, fmt.Sprintf("sample_%03d", i+1))
+			if source == "" {
+				source = filepath.Join(projectPath, "media", "source.mp4")
 			}
-			return writeOutput(cmd, opts, "media samples", vmedia.SamplePlan{Frames: frames, Output: firstNonEmptyString(deliver, filepath.Join(projectPath, "reports", "contact-sheet.jpg"))})
+			outputPath := firstNonEmptyString(deliver, filepath.Join(projectPath, "reports", "contact-sheet.jpg"))
+			if strings.HasPrefix(outputPath, "file:") {
+				outputPath = strings.TrimPrefix(outputPath, "file:")
+			}
+			sampleOpts := vmedia.SampleOptions{
+				FFmpegPath: ffmpegPath,
+				SourcePath: source,
+				OutputPath: outputPath,
+				Count:      count,
+				Overwrite:  opts.Overwrite,
+			}
+			plan := vmedia.BuildSamplePlan(sampleOpts)
+			if opts.Commit {
+				ctx, cancel, err := commandContext(opts.Timeout)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("INVALID_TIMEOUT", err.Error(), "Use a Go duration such as 30s, 5m, or 20m", false))
+				}
+				defer cancel()
+				plan, err = vmedia.RunSamples(ctx, sampleOpts)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("MEDIA_SAMPLES_FAILED", err.Error(), "Check ffmpeg, source path, and output permissions", true))
+				}
+			}
+			return writeOutput(cmd, opts, "media samples", plan)
 		},
 	}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().IntVar(&count, "count", 12, "number of frames")
 	cmd.Flags().StringVar(&deliver, "deliver", "", "delivery target")
+	cmd.Flags().StringVar(&source, "source", "", "source media path")
+	cmd.Flags().StringVar(&ffmpegPath, "ffmpeg-path", "", "ffmpeg binary path")
 	return cmd
 }
 
@@ -1432,6 +1492,14 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
+func trimText(value string, max int) string {
+	value = strings.Join(strings.Fields(value), " ")
+	if max <= 0 || len(value) <= max {
+		return value
+	}
+	return value[:max] + "..."
+}
+
 func renderCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "render", Short: "render workflow commands"}
 	parent.AddCommand(renderPreviewCommand(opts), renderVerifyCommand(opts))
@@ -1544,13 +1612,16 @@ func qaDoctorCommand(opts *globalOptions) *cobra.Command {
 }
 
 func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
-	var projectPath, provider, model, renderPath string
+	var projectPath, provider, model, renderPath, uploadMode string
 	cmd := &cobra.Command{
 		Use:   "analyze",
 		Short: "analyze rendered video with Gemini QA",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if provider != "gemini" {
 				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported QA provider", "Use provider gemini", false))
+			}
+			if uploadMode != "files" && uploadMode != "inline" {
+				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported Gemini upload mode", "Use --upload files or --upload inline", false))
 			}
 			selected, err := vqa.NormalizeModel(model)
 			if err != nil {
@@ -1565,6 +1636,7 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 				"provider":    "gemini",
 				"model":       selected,
 				"render":      renderPath,
+				"upload":      uploadMode,
 				"report_path": filepath.ToSlash(reportPath),
 				"prompt":      vqa.VideoQAPrompt,
 			}
@@ -1573,7 +1645,14 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 				if key == "" {
 					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "Gemini API key is not set", "Use GEMINI_API_KEY or GOOGLE_API_KEY via runtime env or Secret Gate; do not commit secrets", true))
 				}
-				raw, err := vqa.AnalyzeInlineVideo(key, selected, renderPath, vqa.VideoQAPrompt)
+				var raw string
+				if uploadMode == "files" {
+					var uploaded vqa.UploadedFile
+					raw, uploaded, err = vqa.AnalyzeFileVideo(key, selected, renderPath, vqa.VideoQAPrompt)
+					data["uploaded_file"] = uploaded
+				} else {
+					raw, err = vqa.AnalyzeInlineVideo(key, selected, renderPath, vqa.VideoQAPrompt)
+				}
 				if err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("GEMINI_QA_FAILED", err.Error(), "Run qa doctor and verify model availability", true))
 				}
@@ -1591,6 +1670,7 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&provider, "provider", "gemini", "QA provider")
 	cmd.Flags().StringVar(&model, "model", "", "Gemini model")
 	cmd.Flags().StringVar(&renderPath, "render", "", "render path")
+	cmd.Flags().StringVar(&uploadMode, "upload", "files", "Gemini video upload mode: files or inline")
 	return cmd
 }
 
@@ -2017,43 +2097,59 @@ func transcriptCreateCommand(opts *globalOptions) *cobra.Command {
 			if source == "" {
 				source = filepath.Join(projectPath, "media", "source.mp4")
 			}
-			if provider == "openai" {
+			if liveTranscriptProvider(provider) {
+				env := providerEnv(provider)
 				if !opts.Live {
 					return writeOutput(cmd, opts, "transcript create", map[string]any{
 						"status":        "ready",
-						"provider":      "openai",
+						"provider":      provider,
 						"requires_live": true,
-						"requires_key":  "OPENAI_API_KEY",
+						"requires_key":  env,
 						"source":        filepath.ToSlash(source),
+						"dry_run_payload": map[string]any{
+							"source": source,
+							"model":  firstNonEmptyString(model, defaultTranscriptModel(provider)),
+							"writes": []string{"transcript/words.json", "transcript/" + provider + "-transcription.json"},
+						},
 					})
 				}
 				if !opts.Commit {
-					return writeStructuredError(cmd, opts, verrors.Safety("live OpenAI transcription requires --commit", "Pass --live --commit to spend provider quota"))
+					return writeStructuredError(cmd, opts, verrors.Safety("live "+provider+" transcription requires --commit", "Pass --live --commit to spend provider quota"))
 				}
-				key := os.Getenv("OPENAI_API_KEY")
+				key := os.Getenv(env)
 				if key == "" {
-					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "OPENAI_API_KEY is not set", "Use runtime env or Secret Gate; do not commit secrets", true))
+					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", env+" is not set", "Use runtime env or Secret Gate; do not commit secrets", true))
 				}
-				tx, err := vtranscript.TranscribeOpenAI(context.Background(), key, source, model)
+				ctx, cancel, err := commandContext(opts.Timeout)
 				if err != nil {
-					return writeStructuredError(cmd, opts, verrors.External("OPENAI_TRANSCRIPTION_FAILED", err.Error(), "Check source file, model, account, and provider quota", true))
+					return writeStructuredError(cmd, opts, verrors.Validation("INVALID_TIMEOUT", err.Error(), "Use a Go duration such as 30s, 5m, or 20m", false))
 				}
-				words, err := vtranscript.Import("plain-text", []byte(tx.Text), vtranscript.ImportOptions{Rate: rate, FramesPerWord: 15})
+				defer cancel()
+				tx, err := vtranscript.TranscribeProvider(ctx, provider, vtranscript.LiveTranscribeOptions{
+					APIKey:        key,
+					AudioPath:     source,
+					Model:         model,
+					Rate:          rate,
+					SourceMediaID: "source",
+					PollInterval:  2 * time.Second,
+				})
 				if err != nil {
-					return writeStructuredError(cmd, opts, verrors.Validation("TRANSCRIPT_NORMALIZE_FAILED", err.Error(), "Check provider response text", false))
+					return writeStructuredError(cmd, opts, verrors.External(strings.ToUpper(provider)+"_TRANSCRIPTION_FAILED", err.Error(), "Check source file, model, account, provider quota, and --timeout", true))
 				}
-				if err := vtranscript.WriteWords(projectPath, words); err != nil {
+				if err := vtranscript.WriteWords(projectPath, tx.Words); err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
 				}
-				reportPath := filepath.Join(projectPath, "transcript", "openai-transcription.json")
+				reportPath := filepath.Join(projectPath, "transcript", provider+"-transcription.json")
 				raw, _ := json.MarshalIndent(tx, "", "  ")
+				_ = os.MkdirAll(filepath.Dir(reportPath), 0o755)
 				_ = os.WriteFile(reportPath, append(raw, '\n'), 0o644)
 				return writeOutput(cmd, opts, "transcript create", map[string]any{
 					"status":     "written",
-					"provider":   "openai",
+					"provider":   provider,
 					"model":      tx.Model,
+					"job_id":     tx.JobID,
 					"source":     filepath.ToSlash(source),
-					"word_count": len(words.Words),
+					"word_count": len(tx.Words.Words),
 					"artifact":   filepath.ToSlash(filepath.Join(projectPath, "transcript", "words.json")),
 					"report":     filepath.ToSlash(reportPath),
 				})
@@ -2111,27 +2207,90 @@ func transcriptAlignCommand(opts *globalOptions) *cobra.Command {
 }
 
 func transcriptBakeoffCommand(opts *globalOptions) *cobra.Command {
-	var providers string
+	var providers, projectPath, source, model, rate string
 	cmd := &cobra.Command{
 		Use:   "bakeoff",
 		Short: "compare transcript provider readiness",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.Live && !opts.Commit {
+				return writeStructuredError(cmd, opts, verrors.Safety("live transcript bakeoff requires --commit", "Pass --live --commit to spend provider quota, or omit --live for dry-run readiness"))
+			}
+			if source == "" {
+				source = filepath.Join(projectPath, "media", "source.mp4")
+			}
 			names := splitCSV(firstNonEmptyString(providers, "openai,elevenlabs,soniox,assemblyai,deepgram,gladia,local"))
 			results := make([]map[string]any, 0, len(names))
 			for _, name := range names {
 				env := providerEnv(name)
-				results = append(results, map[string]any{
+				result := map[string]any{
 					"provider":     name,
 					"env_var":      env,
 					"env_present":  env == "" || os.Getenv(env) != "",
 					"live_enabled": opts.Live,
 					"capabilities": providerCapabilities(name),
-				})
+					"payload": map[string]any{
+						"source": source,
+						"model":  firstNonEmptyString(model, defaultTranscriptModel(name)),
+					},
+				}
+				switch {
+				case !validProvider(name):
+					result["status"] = "invalid_provider"
+				case !opts.Live:
+					result["status"] = "ready"
+				case !liveTranscriptProvider(name):
+					result["status"] = "local_import_only"
+				case env == "" || os.Getenv(env) == "":
+					result["status"] = "skipped_missing_key"
+				default:
+					ctx, cancel, err := commandContext(opts.Timeout)
+					if err != nil {
+						return writeStructuredError(cmd, opts, verrors.Validation("INVALID_TIMEOUT", err.Error(), "Use a Go duration such as 30s, 5m, or 20m", false))
+					}
+					tx, err := vtranscript.TranscribeProvider(ctx, name, vtranscript.LiveTranscribeOptions{
+						APIKey:        os.Getenv(env),
+						AudioPath:     source,
+						Model:         model,
+						Rate:          rate,
+						SourceMediaID: "source",
+						PollInterval:  2 * time.Second,
+					})
+					cancel()
+					if err != nil {
+						result["status"] = "failed"
+						result["error"] = err.Error()
+						result["retryable"] = true
+					} else {
+						result["status"] = "completed"
+						result["model"] = tx.Model
+						result["job_id"] = tx.JobID
+						result["word_count"] = len(tx.Words.Words)
+						result["text_sample"] = trimText(tx.Text, 160)
+					}
+				}
+				results = append(results, result)
 			}
-			return writeOutput(cmd, opts, "transcript bakeoff", map[string]any{"status": "checked", "providers": results})
+			data := map[string]any{"status": "checked", "live": opts.Live, "source": filepath.ToSlash(source), "providers": results}
+			if opts.Commit {
+				reportPath := filepath.Join(projectPath, "reports", "provider-bakeoff.json")
+				raw, _ := json.MarshalIndent(data, "", "  ")
+				if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("BAKEOFF_REPORT_WRITE_FAILED", err.Error(), "Check project reports directory permissions", false))
+				}
+				if err := os.WriteFile(reportPath, append(raw, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("BAKEOFF_REPORT_WRITE_FAILED", err.Error(), "Check project reports directory permissions", false))
+				}
+				data["report"] = filepath.ToSlash(reportPath)
+			}
+			return writeOutput(cmd, opts, "transcript bakeoff", data)
 		},
 	}
 	cmd.Flags().StringVar(&providers, "providers", "", "comma-separated providers")
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&source, "source", "", "audio or video source path")
+	cmd.Flags().StringVar(&source, "audio", "", "alias for --source")
+	cmd.Flags().StringVar(&model, "model", "", "provider model")
+	cmd.Flags().StringVar(&rate, "rate", "30000/1001", "source frame rate")
 	return cmd
 }
 
@@ -2208,17 +2367,64 @@ func providerEnv(provider string) string {
 	}
 }
 
+func liveTranscriptProvider(provider string) bool {
+	switch provider {
+	case "openai", "elevenlabs", "soniox", "assemblyai", "deepgram", "gladia":
+		return true
+	default:
+		return false
+	}
+}
+
+func defaultTranscriptModel(provider string) string {
+	switch provider {
+	case "openai":
+		return vtranscript.DefaultOpenAITranscribeModel
+	case "elevenlabs":
+		return vtranscript.DefaultElevenLabsModel
+	case "deepgram":
+		return vtranscript.DefaultDeepgramModel
+	case "assemblyai":
+		return vtranscript.DefaultAssemblyAIModel
+	case "gladia":
+		return vtranscript.DefaultGladiaModel
+	case "soniox":
+		return vtranscript.DefaultSonioxModel
+	default:
+		return ""
+	}
+}
+
 func providerCapabilities(provider string) []string {
 	switch provider {
 	case "openai":
 		return []string{"speech_to_text", "json_text", "optional_diarized_model"}
-	case "elevenlabs", "soniox", "assemblyai", "deepgram", "gladia":
-		return []string{"speech_to_text", "provider_adapter_pending"}
+	case "elevenlabs", "deepgram":
+		return []string{"speech_to_text", "word_timestamps", "diarization", "live_adapter"}
+	case "soniox", "assemblyai", "gladia":
+		return []string{"speech_to_text", "word_timestamps", "diarization", "async_polling", "live_adapter"}
 	case "local", "plain-text", "generic-words":
 		return []string{"import", "no_api_key"}
 	default:
 		return nil
 	}
+}
+
+func commandContext(timeoutValue string) (context.Context, context.CancelFunc, error) {
+	timeoutValue = strings.TrimSpace(timeoutValue)
+	if timeoutValue == "" {
+		ctx, cancel := context.WithCancel(context.Background())
+		return ctx, cancel, nil
+	}
+	timeout, err := time.ParseDuration(timeoutValue)
+	if err != nil {
+		return nil, nil, err
+	}
+	if timeout <= 0 {
+		return nil, nil, fmt.Errorf("timeout must be positive")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	return ctx, cancel, nil
 }
 
 func splitCSV(value string) []string {

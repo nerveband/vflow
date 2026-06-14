@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -20,6 +22,12 @@ const (
 type ModelInfo struct {
 	Name string `json:"name"`
 }
+
+var (
+	geminiModelsURL       = "https://generativelanguage.googleapis.com/v1beta/models"
+	geminiGenerateBaseURL = "https://generativelanguage.googleapis.com/v1beta/models"
+	geminiUploadURL       = "https://generativelanguage.googleapis.com/upload/v1beta/files"
+)
 
 type DoctorResult struct {
 	Provider        string   `json:"provider"`
@@ -85,7 +93,7 @@ func APIKeyFromEnv() (string, string) {
 }
 
 func ListModels(apiKey string) ([]string, error) {
-	req, err := http.NewRequest(http.MethodGet, "https://generativelanguage.googleapis.com/v1beta/models", nil)
+	req, err := http.NewRequest(http.MethodGet, geminiModelsURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +133,7 @@ func AnalyzeTextOnly(apiKey, model, prompt string) (string, error) {
 		"generationConfig": map[string]string{"response_mime_type": "application/json"},
 	}
 	raw, _ := json.Marshal(body)
-	url := "https://generativelanguage.googleapis.com/v1beta/models/" + selected + ":generateContent"
+	url := geminiGenerateURL(selected)
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return "", err
@@ -163,7 +171,7 @@ func AnalyzeInlineVideo(apiKey, model, videoPath, prompt string) (string, error)
 		"generationConfig": map[string]string{"response_mime_type": "application/json"},
 	}
 	raw, _ := json.Marshal(body)
-	url := "https://generativelanguage.googleapis.com/v1beta/models/" + selected + ":generateContent"
+	url := geminiGenerateURL(selected)
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return "", err
@@ -180,6 +188,133 @@ func AnalyzeInlineVideo(apiKey, model, videoPath, prompt string) (string, error)
 		return "", fmt.Errorf("Gemini generateContent returned %s: %s", resp.Status, compactProviderBody(out))
 	}
 	return string(out), nil
+}
+
+type UploadedFile struct {
+	Name     string `json:"name"`
+	URI      string `json:"uri"`
+	MIMEType string `json:"mime_type"`
+	State    string `json:"state,omitempty"`
+}
+
+func UploadFile(apiKey, path string) (UploadedFile, error) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return UploadedFile{}, err
+	}
+	mimeType := mime.TypeByExtension(strings.ToLower(filepath.Ext(path)))
+	if mimeType == "" {
+		mimeType = "video/mp4"
+	}
+	startBody, _ := json.Marshal(map[string]any{"file": map[string]string{"display_name": filepath.Base(path)}})
+	startReq, err := http.NewRequest(http.MethodPost, geminiUploadURL, bytes.NewReader(startBody))
+	if err != nil {
+		return UploadedFile{}, err
+	}
+	startReq.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
+	startReq.Header.Set("X-Goog-Upload-Protocol", "resumable")
+	startReq.Header.Set("X-Goog-Upload-Command", "start")
+	startReq.Header.Set("X-Goog-Upload-Header-Content-Length", fmt.Sprint(fileInfo.Size()))
+	startReq.Header.Set("X-Goog-Upload-Header-Content-Type", mimeType)
+	startReq.Header.Set("Content-Type", "application/json")
+	startResp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(startReq)
+	if err != nil {
+		return UploadedFile{}, err
+	}
+	defer startResp.Body.Close()
+	startRaw, _ := io.ReadAll(startResp.Body)
+	if startResp.StatusCode >= 300 {
+		return UploadedFile{}, fmt.Errorf("Gemini file upload start returned %s: %s", startResp.Status, compactProviderBody(startRaw))
+	}
+	uploadURL := strings.TrimSpace(startResp.Header.Get("X-Goog-Upload-URL"))
+	if uploadURL == "" {
+		return UploadedFile{}, fmt.Errorf("Gemini file upload start did not return X-Goog-Upload-URL")
+	}
+	video, err := os.ReadFile(path)
+	if err != nil {
+		return UploadedFile{}, err
+	}
+	uploadReq, err := http.NewRequest(http.MethodPost, uploadURL, bytes.NewReader(video))
+	if err != nil {
+		return UploadedFile{}, err
+	}
+	uploadReq.Header.Set("Content-Length", fmt.Sprint(len(video)))
+	uploadReq.Header.Set("X-Goog-Upload-Offset", "0")
+	uploadReq.Header.Set("X-Goog-Upload-Command", "upload, finalize")
+	uploadResp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(uploadReq)
+	if err != nil {
+		return UploadedFile{}, err
+	}
+	defer uploadResp.Body.Close()
+	uploadRaw, _ := io.ReadAll(uploadResp.Body)
+	if uploadResp.StatusCode >= 300 {
+		return UploadedFile{}, fmt.Errorf("Gemini file upload finalize returned %s: %s", uploadResp.Status, compactProviderBody(uploadRaw))
+	}
+	var parsed struct {
+		File struct {
+			Name     string `json:"name"`
+			URI      string `json:"uri"`
+			MIMEType string `json:"mimeType"`
+			State    string `json:"state"`
+		} `json:"file"`
+	}
+	if err := json.Unmarshal(uploadRaw, &parsed); err != nil {
+		return UploadedFile{}, err
+	}
+	if parsed.File.URI == "" {
+		return UploadedFile{}, fmt.Errorf("Gemini file upload response missing file.uri")
+	}
+	return UploadedFile{Name: parsed.File.Name, URI: parsed.File.URI, MIMEType: firstNonEmpty(parsed.File.MIMEType, mimeType), State: parsed.File.State}, nil
+}
+
+func AnalyzeFileVideo(apiKey, model, videoPath, prompt string) (string, UploadedFile, error) {
+	selected, err := NormalizeModel(model)
+	if err != nil {
+		return "", UploadedFile{}, err
+	}
+	uploaded, err := UploadFile(apiKey, videoPath)
+	if err != nil {
+		return "", UploadedFile{}, err
+	}
+	body := map[string]any{
+		"contents": []map[string]any{{
+			"parts": []map[string]any{
+				{"file_data": map[string]string{"mime_type": uploaded.MIMEType, "file_uri": uploaded.URI}},
+				{"text": prompt},
+			},
+		}},
+		"generationConfig": map[string]string{"response_mime_type": "application/json"},
+	}
+	raw, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, geminiGenerateURL(selected), bytes.NewReader(raw))
+	if err != nil {
+		return "", UploadedFile{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
+	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
+	if err != nil {
+		return "", UploadedFile{}, err
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return "", UploadedFile{}, fmt.Errorf("Gemini generateContent returned %s: %s", resp.Status, compactProviderBody(out))
+	}
+	return string(out), uploaded, nil
+}
+
+func geminiGenerateURL(model string) string {
+	return strings.TrimRight(geminiGenerateBaseURL, "/") + "/" + model + ":generateContent"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func compactProviderBody(raw []byte) string {
