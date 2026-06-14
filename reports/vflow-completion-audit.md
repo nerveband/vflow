@@ -38,8 +38,8 @@ This audit checks the active goal against current repo state and command output.
 - `nle accept --commit` writes an explicit accepted-review artifact; `nle apply --commit` can merge accepted needs-review changes from that artifact.
 - `color review` writes `reports/color-grade-report.json` without requiring Gemini and can enrich it with live Gemini when runtime credentials are present.
 - `project index --path` writes a SQLite/FTS index via `modernc.org/sqlite` and project `reports/provenance.json`; `transcript search --data-source local` returns FTS transcript hits with project IDs and frame ranges.
-- `upgrade` checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and staged the public `v0.1.1` Darwin arm64 release asset into `tmp/upgrade-proof`.
-- Public release `https://github.com/nerveband/vflow/releases/tag/v0.1.1` exists with platform archives and `checksums.txt`.
+- `upgrade` checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and staged the public `v0.1.2` Darwin arm64 release asset into `tmp/upgrade-proof-v0.1.2`.
+- Public release `https://github.com/nerveband/vflow/releases/tag/v0.1.2` exists with platform archives and `checksums.txt`.
 - `audit cli` now runs a weighted evidence scorecard from `internal/audit` instead of returning a hardcoded scaffold score.
 
 ## Not Yet Fully Proven
