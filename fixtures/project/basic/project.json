@@ -1,0 +1,7 @@
+{
+  "version": "vflow-project/v1",
+  "id": "basic",
+  "root": "fixtures/project/basic",
+  "created_at": "2026-06-14T00:00:00Z",
+  "updated_at": "2026-06-14T00:00:00Z"
+}

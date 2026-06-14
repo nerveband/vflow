@@ -1,0 +1,25 @@
+{
+  "version": "vflow-words/v1",
+  "source_media_id": "source",
+  "rate": "30000/1001",
+  "words": [
+    {
+      "id": "w_000001",
+      "text": "Bismillah",
+      "speaker_label": "SPEAKER_00",
+      "start_frame": 120,
+      "end_frame": 148,
+      "confidence": 0.98,
+      "provider": "generic-words"
+    },
+    {
+      "id": "w_000002",
+      "text": "welcome",
+      "speaker_label": "SPEAKER_00",
+      "start_frame": 150,
+      "end_frame": 185,
+      "confidence": 0.97,
+      "provider": "generic-words"
+    }
+  ]
+}

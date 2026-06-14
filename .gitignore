@@ -1,0 +1,17 @@
+bin/
+dist/
+.DS_Store
+.env
+.env/
+*.log
+
+# Local/private research and copied media fixtures. Do not publish these.
+work/
+outputs/
+THREAD_HANDOFF.md
+docs/superpowers/
+
+# Generated local proof projects.
+tmp/
+demo/
+reports/live/

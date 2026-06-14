@@ -1,0 +1,20 @@
+{
+  "version": "vflow-framing-presets/v1",
+  "source_width": 3840,
+  "source_height": 2160,
+  "target_aspect": "16:9",
+  "presets": [
+    {
+      "id": "wide",
+      "label": "Wide",
+      "type": "wide",
+      "crop_px": {"x": 0, "y": 0, "w": 3840, "h": 2160}
+    },
+    {
+      "id": "speaker_ali_medium",
+      "label": "Ali medium",
+      "type": "speaker",
+      "crop_px": {"x": 960, "y": 0, "w": 1920, "h": 1080}
+    }
+  ]
+}
