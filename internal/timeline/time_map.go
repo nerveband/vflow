@@ -31,3 +31,17 @@ func (m Map) SourceToTimeline(sourceFrame int) (int, bool) {
 	}
 	return sourceFrame - removed, true
 }
+
+func (m Map) SourceBoundaryToTimeline(sourceFrame int) int {
+	removed := 0
+	for _, del := range m.Deletes {
+		if sourceFrame <= del.StartFrame {
+			break
+		}
+		if sourceFrame <= del.EndFrame {
+			return del.StartFrame - removed
+		}
+		removed += del.EndFrame - del.StartFrame
+	}
+	return sourceFrame - removed
+}

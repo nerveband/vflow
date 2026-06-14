@@ -529,22 +529,22 @@ func mediaProbeCommand(opts *globalOptions) *cobra.Command {
 			if probeJSON != "" {
 				raw, err := os.ReadFile(probeJSON)
 				if err != nil {
-					return err
+					return writeStructuredError(cmd, opts, verrors.External("FFPROBE_JSON_READ_FAILED", err.Error(), "Check --ffprobe-json path", false))
 				}
 				review, err := vmedia.ParseFFProbe(raw, firstNonEmptyString(source, "media/source.mp4"))
 				if err != nil {
-					return err
+					return writeStructuredError(cmd, opts, verrors.Validation("FFPROBE_JSON_INVALID", err.Error(), "Pass valid ffprobe JSON", false))
 				}
 				reviews = append(reviews, review)
 			} else {
 				sources, err := discoverMediaSources(projectPath, source)
 				if err != nil {
-					return err
+					return writeStructuredError(cmd, opts, verrors.Validation("MEDIA_SOURCE_NOT_FOUND", err.Error(), "Pass --source, or place source files under media/source-4k", false))
 				}
 				for _, src := range sources {
 					review, err := vmedia.ProbeFile(ffprobePath, src)
 					if err != nil {
-						return err
+						return writeStructuredError(cmd, opts, verrors.External("FFPROBE_FAILED", err.Error(), "Check ffprobe, source path, and media codec support", false))
 					}
 					reviews = append(reviews, review)
 				}
@@ -565,7 +565,7 @@ func mediaProbeCommand(opts *globalOptions) *cobra.Command {
 					return err
 				}
 				if err := os.WriteFile(filepath.Join(projectPath, "source-media-review.json"), append(raw, '\n'), 0o644); err != nil {
-					return err
+					return writeStructuredError(cmd, opts, verrors.External("SOURCE_REVIEW_WRITE_FAILED", err.Error(), "Check project write permissions", false))
 				}
 				data["status"] = "written"
 			}
@@ -873,6 +873,9 @@ func timelineCompileCommand(opts *globalOptions) *cobra.Command {
 func discoverMediaSources(projectPath, source string) ([]string, error) {
 	if source != "" {
 		if filepath.IsAbs(source) {
+			return []string{source}, nil
+		}
+		if _, err := os.Stat(source); err == nil {
 			return []string{source}, nil
 		}
 		return []string{filepath.Join(projectPath, source)}, nil

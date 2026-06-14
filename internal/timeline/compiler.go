@@ -39,16 +39,16 @@ func Compile(edl cleanup.ContentEDL, durationFrames int) CompiledTimeline {
 	lastSource := 0
 	for i, del := range deletes {
 		if del.StartFrame > lastSource {
-			in, _ := m.SourceToTimeline(lastSource)
-			out, _ := m.SourceToTimeline(del.StartFrame)
+			in := m.SourceBoundaryToTimeline(lastSource)
+			out := m.SourceBoundaryToTimeline(del.StartFrame)
 			tl.Segments = append(tl.Segments, Segment{ID: segmentID(len(tl.Segments) + 1), SourceFrameIn: lastSource, SourceFrameOut: del.StartFrame, TimelineFrameIn: in, TimelineFrameOut: out})
 		}
 		lastSource = del.EndFrame
 		_ = i
 	}
 	if durationFrames > lastSource {
-		in, _ := m.SourceToTimeline(lastSource)
-		out, _ := m.SourceToTimeline(durationFrames)
+		in := m.SourceBoundaryToTimeline(lastSource)
+		out := m.SourceBoundaryToTimeline(durationFrames)
 		tl.Segments = append(tl.Segments, Segment{ID: segmentID(len(tl.Segments) + 1), SourceFrameIn: lastSource, SourceFrameOut: durationFrames, TimelineFrameIn: in, TimelineFrameOut: out})
 	}
 	return tl
