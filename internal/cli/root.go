@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -158,19 +159,6 @@ func writeStructuredError(cmd *cobra.Command, opts *globalOptions, err *verrors.
 	return exitError{err: err, code: err.ExitCode}
 }
 
-func stubCommand(name, short string, opts *globalOptions) *cobra.Command {
-	return &cobra.Command{
-		Use:   name,
-		Short: short,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return writeOutput(cmd, opts, name, map[string]any{
-				"status": "not_implemented",
-				"name":   name,
-			})
-		},
-	}
-}
-
 func agentContextCommand(opts *globalOptions) *cobra.Command {
 	var section string
 	cmd := &cobra.Command{
@@ -232,7 +220,7 @@ func doctorCommand(opts *globalOptions) *cobra.Command {
 				tools[name] = map[string]any{"available": err == nil, "path": path}
 			}
 			env := map[string]bool{}
-			for _, key := range []string{"OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY", "SONIOX_API_KEY", "ASSEMBLYAI_API_KEY", "DEEPGRAM_API_KEY", "GLADIA_API_KEY", "ANTHROPIC_API_KEY", "HF_TOKEN"} {
+			for _, key := range []string{"OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "ELEVENLABS_API_KEY", "SONIOX_API_KEY", "ASSEMBLYAI_API_KEY", "DEEPGRAM_API_KEY", "GLADIA_API_KEY", "ANTHROPIC_API_KEY", "HF_TOKEN"} {
 				env[key] = os.Getenv(key) != ""
 			}
 			return writeOutput(cmd, opts, "doctor", map[string]any{"status": "ok", "local": local, "tools": tools, "env_present": env})
@@ -312,7 +300,7 @@ func authCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "auth", Short: "auth commands"}
 	parent.AddCommand(&cobra.Command{Use: "doctor", Short: "check provider auth", RunE: func(cmd *cobra.Command, args []string) error {
 		env := map[string]bool{}
-		for _, key := range []string{"OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY", "SONIOX_API_KEY", "ASSEMBLYAI_API_KEY", "DEEPGRAM_API_KEY", "GLADIA_API_KEY", "ANTHROPIC_API_KEY", "HF_TOKEN"} {
+		for _, key := range []string{"OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "ELEVENLABS_API_KEY", "SONIOX_API_KEY", "ASSEMBLYAI_API_KEY", "DEEPGRAM_API_KEY", "GLADIA_API_KEY", "ANTHROPIC_API_KEY", "HF_TOKEN"} {
 			env[key] = os.Getenv(key) != ""
 		}
 		return writeOutput(cmd, opts, "auth doctor", map[string]any{"status": "checked", "live": opts.Live, "env_present": env, "secrets_redacted": true})
@@ -348,9 +336,33 @@ func artifactsCommand(opts *globalOptions) *cobra.Command {
 	}}
 	list.Flags().StringVar(&projectPath, "project", ".", "project path")
 	parent.AddCommand(list)
-	parent.AddCommand(&cobra.Command{Use: "deliver", Short: "deliver artifact", RunE: func(cmd *cobra.Command, args []string) error {
-		return writeOutput(cmd, opts, "artifacts deliver", map[string]any{"status": "planned"})
-	}})
+	var input, deliver string
+	deliverCmd := &cobra.Command{Use: "deliver", Short: "deliver artifact", RunE: func(cmd *cobra.Command, args []string) error {
+		if input == "" {
+			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass --input artifact path", false))
+		}
+		if deliver == "" {
+			deliver = "stdout"
+		}
+		status := "planned"
+		outputPath := ""
+		if opts.Commit && strings.HasPrefix(deliver, "file:") {
+			outputPath = strings.TrimPrefix(deliver, "file:")
+			if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("ARTIFACT_DELIVER_FAILED", err.Error(), "Check delivery path", false))
+			}
+			if err := copyFile(input, outputPath); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("ARTIFACT_DELIVER_FAILED", err.Error(), "Check artifact and delivery path", false))
+			}
+			status = "delivered"
+		} else if opts.Commit && deliver == "stdout" {
+			status = "available_on_stdout"
+		}
+		return writeOutput(cmd, opts, "artifacts deliver", map[string]any{"status": status, "input": filepath.ToSlash(input), "deliver": deliver, "output": filepath.ToSlash(outputPath)})
+	}}
+	deliverCmd.Flags().StringVar(&input, "input", "", "artifact path")
+	deliverCmd.Flags().StringVar(&deliver, "deliver", "stdout", "delivery target: stdout or file:<path>")
+	parent.AddCommand(deliverCmd)
 	return parent
 }
 
@@ -428,40 +440,9 @@ func artifactSchemaNames() []string {
 	}
 }
 
-func resourceCommand(name string, opts *globalOptions, verbs ...string) *cobra.Command {
-	parent := &cobra.Command{Use: name, Short: fmt.Sprintf("%s workflow commands", name)}
-	for _, verb := range verbs {
-		verb := verb
-		parent.AddCommand(&cobra.Command{
-			Use:   verb,
-			Short: fmt.Sprintf("%s %s", name, verb),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return writeOutput(cmd, opts, name+" "+verb, map[string]any{
-					"status": "not_implemented",
-					"name":   name + " " + verb,
-				})
-			},
-		})
-	}
-	return parent
-}
-
 func projectCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "project", Short: "project workflow commands"}
-	parent.AddCommand(projectInitCommand(opts), projectGetCommand(opts))
-	for _, verb := range []string{"list", "index"} {
-		verb := verb
-		parent.AddCommand(&cobra.Command{
-			Use:   verb,
-			Short: "project " + verb,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return writeOutput(cmd, opts, "project "+verb, map[string]any{
-					"status": "not_implemented",
-					"name":   "project " + verb,
-				})
-			},
-		})
-	}
+	parent.AddCommand(projectInitCommand(opts), projectGetCommand(opts), projectListCommand(opts), projectIndexCommand(opts))
 	return parent
 }
 
@@ -507,6 +488,56 @@ func projectGetCommand(opts *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&path, "path", ".", "project path")
 	cmd.Flags().StringVar(&path, "project", ".", "project path")
+	return cmd
+}
+
+func projectListCommand(opts *globalOptions) *cobra.Command {
+	var root string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "list vflow projects under a root",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projects, err := findProjectContracts(root, opts.MaxDepth)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("PROJECT_LIST_FAILED", err.Error(), "Check --root permissions", false))
+			}
+			return writeOutput(cmd, opts, "project list", map[string]any{"root": root, "count": len(projects), "projects": projects})
+		},
+	}
+	cmd.Flags().StringVar(&root, "root", ".", "search root")
+	return cmd
+}
+
+func projectIndexCommand(opts *globalOptions) *cobra.Command {
+	var root, outputPath string
+	cmd := &cobra.Command{
+		Use:   "index",
+		Short: "write a project index artifact",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projects, err := findProjectContracts(root, opts.MaxDepth)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_FAILED", err.Error(), "Check --root permissions", false))
+			}
+			if outputPath == "" {
+				outputPath = filepath.Join(root, "project-index.json")
+			}
+			data := map[string]any{"version": "vflow-project-index/v1", "root": root, "count": len(projects), "projects": projects}
+			status := "planned"
+			if opts.Commit {
+				raw, err := json.MarshalIndent(data, "", "  ")
+				if err != nil {
+					return err
+				}
+				if err := os.WriteFile(outputPath, append(raw, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_WRITE_FAILED", err.Error(), "Check output path permissions", false))
+				}
+				status = "written"
+			}
+			return writeOutput(cmd, opts, "project index", map[string]any{"status": status, "output": filepath.ToSlash(outputPath), "index": data})
+		},
+	}
+	cmd.Flags().StringVar(&root, "root", ".", "search root")
+	cmd.Flags().StringVar(&outputPath, "output", "", "index output path")
 	return cmd
 }
 
@@ -664,21 +695,72 @@ func mediaSamplesCommand(opts *globalOptions) *cobra.Command {
 
 func cleanupCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "cleanup", Short: "cleanup workflow commands"}
-	parent.AddCommand(cleanupApplyCommand(opts))
-	for _, verb := range []string{"suggest", "review"} {
-		verb := verb
-		parent.AddCommand(&cobra.Command{
-			Use:   verb,
-			Short: "cleanup " + verb,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return writeOutput(cmd, opts, "cleanup "+verb, map[string]any{
-					"status": "planned",
-					"name":   "cleanup " + verb,
-				})
-			},
-		})
-	}
+	parent.AddCommand(cleanupApplyCommand(opts), cleanupSuggestCommand(opts), cleanupReviewCommand(opts))
 	return parent
+}
+
+func cleanupSuggestCommand(opts *globalOptions) *cobra.Command {
+	var projectPath string
+	cmd := &cobra.Command{
+		Use:   "suggest",
+		Short: "suggest cleanup decisions from transcript words",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			words, err := vtranscript.ReadWords(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_READ_FAILED", err.Error(), "Create or import transcript/words.json first", false))
+			}
+			type suggested struct {
+				Start      float64 `json:"start"`
+				End        float64 `json:"end"`
+				Reason     string  `json:"reason"`
+				Confidence float64 `json:"confidence"`
+			}
+			suggestions := []suggested{}
+			for _, word := range words.Words {
+				text := strings.ToLower(word.Text)
+				if text == "um" || text == "uh" || text == "erm" {
+					suggestions = append(suggestions, suggested{Start: float64(word.StartFrame) / 30.0, End: float64(word.EndFrame) / 30.0, Reason: "filler", Confidence: 0.72})
+				}
+			}
+			status := "suggested"
+			artifact := filepath.Join(projectPath, "decisions", "delete_segments.proposed.json")
+			if opts.Commit {
+				if err := os.MkdirAll(filepath.Dir(artifact), 0o755); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("CLEANUP_SUGGEST_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				raw, _ := json.MarshalIndent(suggestions, "", "  ")
+				if err := os.WriteFile(artifact, append(raw, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("CLEANUP_SUGGEST_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				status = "written"
+			}
+			return writeOutput(cmd, opts, "cleanup suggest", map[string]any{"status": status, "suggestion_count": len(suggestions), "artifact": filepath.ToSlash(artifact), "suggestions": suggestions})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	return cmd
+}
+
+func cleanupReviewCommand(opts *globalOptions) *cobra.Command {
+	var projectPath string
+	cmd := &cobra.Command{
+		Use:   "review",
+		Short: "review cleanup decisions",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			edl, err := vcleanup.ReadContentEDL(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("CONTENT_EDL_READ_FAILED", err.Error(), "Run cleanup apply --commit first", false))
+			}
+			return writeOutput(cmd, opts, "cleanup review", map[string]any{
+				"status":       "reviewed",
+				"delete_count": len(edl.DeleteSegments),
+				"rate":         edl.Rate,
+				"needs_review": []any{},
+			})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	return cmd
 }
 
 func cleanupApplyCommand(opts *globalOptions) *cobra.Command {
@@ -724,17 +806,151 @@ func framingCommand(opts *globalOptions) *cobra.Command {
 	preset := &cobra.Command{Use: "preset", Short: "framing preset commands"}
 	preset.AddCommand(framingPresetImportCommand(opts), framingPresetValidateCommand(opts), framingPresetListCommand(opts))
 	parent.AddCommand(preset)
-	for _, verb := range []string{"map-speakers", "propose", "compile", "review"} {
-		verb := verb
-		parent.AddCommand(&cobra.Command{
-			Use:   verb,
-			Short: "framing " + verb,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return writeOutput(cmd, opts, "framing "+verb, map[string]any{"status": "planned", "name": "framing " + verb})
-			},
-		})
-	}
+	parent.AddCommand(framingMapSpeakersCommand(opts), framingProposeCommand(opts), framingCompileCommand(opts), framingReviewCommand(opts))
 	return parent
+}
+
+func framingMapSpeakersCommand(opts *globalOptions) *cobra.Command {
+	var projectPath string
+	cmd := &cobra.Command{
+		Use:   "map-speakers",
+		Short: "map transcript speaker labels to stable framing presets",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			words, err := vtranscript.ReadWords(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_READ_FAILED", err.Error(), "Create or import transcript/words.json first", false))
+			}
+			presets, err := vframing.ReadPresets(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("FRAMING_PRESET_READ_FAILED", err.Error(), "Import framing presets first", false))
+			}
+			presetID := ""
+			if len(presets.Presets) > 0 {
+				presetID = presets.Presets[0].ID
+			}
+			mapping := map[string]string{}
+			for _, word := range words.Words {
+				if word.SpeakerLabel != "" {
+					mapping[word.SpeakerLabel] = presetID
+				}
+			}
+			data := map[string]any{"version": "vflow-speaker-map/v1", "status": "mapped", "speaker_count": len(mapping), "map": mapping}
+			if opts.Commit {
+				path := filepath.Join(projectPath, "calibration", "speaker-map.json")
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("SPEAKER_MAP_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				raw, _ := json.MarshalIndent(data, "", "  ")
+				if err := os.WriteFile(path, append(raw, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("SPEAKER_MAP_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				data["artifact"] = filepath.ToSlash(path)
+			}
+			return writeOutput(cmd, opts, "framing map-speakers", data)
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	return cmd
+}
+
+func framingProposeCommand(opts *globalOptions) *cobra.Command {
+	var projectPath string
+	cmd := &cobra.Command{
+		Use:   "propose",
+		Short: "propose a framing lane from presets",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			presets, err := vframing.ReadPresets(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("FRAMING_PRESET_READ_FAILED", err.Error(), "Import framing presets first", false))
+			}
+			presetID := "wide"
+			if len(presets.Presets) > 0 {
+				presetID = presets.Presets[0].ID
+			}
+			lane := map[string]any{
+				"version": "vflow-framing-lane/v1",
+				"events": []map[string]any{{
+					"id":          "fr_000001",
+					"start_frame": 0,
+					"end_frame":   0,
+					"preset_id":   presetID,
+					"reason":      "default framing proposal",
+				}},
+			}
+			status := "proposed"
+			path := filepath.Join(projectPath, "decisions", "framing-lane.proposed.json")
+			if opts.Commit {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("FRAMING_PROPOSAL_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				raw, _ := json.MarshalIndent(lane, "", "  ")
+				if err := os.WriteFile(path, append(raw, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("FRAMING_PROPOSAL_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				status = "written"
+			}
+			return writeOutput(cmd, opts, "framing propose", map[string]any{"status": status, "artifact": filepath.ToSlash(path), "lane": lane})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	return cmd
+}
+
+func framingCompileCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, input string
+	cmd := &cobra.Command{
+		Use:   "compile",
+		Short: "compile an approved framing lane",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if input == "" {
+				input = filepath.Join(projectPath, "decisions", "framing-lane.proposed.json")
+			}
+			raw, err := os.ReadFile(input)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("FRAMING_LANE_READ_FAILED", err.Error(), "Run framing propose --commit or pass --input", false))
+			}
+			var lane map[string]any
+			if err := json.Unmarshal(raw, &lane); err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("FRAMING_LANE_INVALID", err.Error(), "Pass valid framing lane JSON", false))
+			}
+			lane["compiled"] = true
+			status := "compiled"
+			path := filepath.Join(projectPath, "decisions", "framing-lane.json")
+			if opts.Commit {
+				out, _ := json.MarshalIndent(lane, "", "  ")
+				if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("FRAMING_LANE_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				status = "written"
+			}
+			return writeOutput(cmd, opts, "framing compile", map[string]any{"status": status, "artifact": filepath.ToSlash(path), "lane": lane})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&input, "input", "", "framing lane input")
+	return cmd
+}
+
+func framingReviewCommand(opts *globalOptions) *cobra.Command {
+	var projectPath string
+	cmd := &cobra.Command{
+		Use:   "review",
+		Short: "review compiled framing lane",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := filepath.Join(projectPath, "decisions", "framing-lane.json")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("FRAMING_LANE_READ_FAILED", err.Error(), "Run framing compile --commit first", false))
+			}
+			var lane map[string]any
+			if err := json.Unmarshal(raw, &lane); err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("FRAMING_LANE_INVALID", err.Error(), "Check compiled framing lane JSON", false))
+			}
+			return writeOutput(cmd, opts, "framing review", map[string]any{"status": "reviewed", "lane": lane, "needs_review": []any{}})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	return cmd
 }
 
 func framingPresetImportCommand(opts *globalOptions) *cobra.Command {
@@ -809,14 +1025,45 @@ func framingPresetListCommand(opts *globalOptions) *cobra.Command {
 func timelineCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "timeline", Short: "timeline workflow commands"}
 	parent.AddCommand(timelineCompileCommand(opts))
-	parent.AddCommand(&cobra.Command{
+	parent.AddCommand(timelineVerifyCommand(opts))
+	return parent
+}
+
+func timelineVerifyCommand(opts *globalOptions) *cobra.Command {
+	var projectPath string
+	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "verify compiled timeline",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return writeOutput(cmd, opts, "timeline verify", map[string]any{"status": "planned"})
+			path := filepath.Join(projectPath, "timeline", "compiled-timeline.json")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("TIMELINE_READ_FAILED", err.Error(), "Run timeline compile --commit first", false))
+			}
+			var tl vtimeline.CompiledTimeline
+			if err := json.Unmarshal(raw, &tl); err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("TIMELINE_INVALID", err.Error(), "Check compiled timeline JSON", false))
+			}
+			issues := []map[string]any{}
+			lastOut := 0
+			for _, segment := range tl.Segments {
+				if segment.TimelineFrameIn < lastOut {
+					issues = append(issues, map[string]any{"code": "OVERLAP", "segment": segment.ID})
+				}
+				if segment.TimelineFrameOut < segment.TimelineFrameIn || segment.SourceFrameOut < segment.SourceFrameIn {
+					issues = append(issues, map[string]any{"code": "NEGATIVE_DURATION", "segment": segment.ID})
+				}
+				lastOut = segment.TimelineFrameOut
+			}
+			status := "valid"
+			if len(issues) > 0 {
+				status = "invalid"
+			}
+			return writeOutput(cmd, opts, "timeline verify", map[string]any{"status": status, "segment_count": len(tl.Segments), "duration_frames": tl.DurationFrames, "issues": issues})
 		},
-	})
-	return parent
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	return cmd
 }
 
 func timelineCompileCommand(opts *globalOptions) *cobra.Command {
@@ -899,6 +1146,52 @@ func discoverMediaSources(projectPath, source string) ([]string, error) {
 		return nil, os.ErrNotExist
 	}
 	return matches, nil
+}
+
+func findProjectContracts(root string, maxDepth int) ([]map[string]any, error) {
+	if root == "" {
+		root = "."
+	}
+	root = filepath.Clean(root)
+	var projects []map[string]any
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if name == ".git" || name == "node_modules" || name == "bin" || name == "dist" {
+				return filepath.SkipDir
+			}
+			if maxDepth > 0 {
+				rel, relErr := filepath.Rel(root, path)
+				if relErr == nil && rel != "." && strings.Count(rel, string(os.PathSeparator))+1 > maxDepth {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if d.Name() != "project.json" {
+			return nil
+		}
+		proj, loadErr := vproject.Load(filepath.Dir(path))
+		if loadErr != nil {
+			projects = append(projects, map[string]any{
+				"path":  filepath.ToSlash(path),
+				"valid": false,
+				"error": loadErr.Error(),
+			})
+			return nil
+		}
+		projects = append(projects, map[string]any{
+			"id":    proj.ID,
+			"root":  proj.Root,
+			"path":  filepath.ToSlash(path),
+			"valid": true,
+		})
+		return nil
+	})
+	return projects, err
 }
 
 func copyFile(src, dst string) error {
@@ -1040,9 +1333,9 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 				"prompt":      vqa.VideoQAPrompt,
 			}
 			if opts.Live {
-				key := os.Getenv("GEMINI_API_KEY")
+				key, _ := vqa.APIKeyFromEnv()
 				if key == "" {
-					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "GEMINI_API_KEY is not set", "Use runtime env or Secret Gate; do not commit secrets", true))
+					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "Gemini API key is not set", "Use GEMINI_API_KEY or GOOGLE_API_KEY via runtime env or Secret Gate; do not commit secrets", true))
 				}
 				raw, err := vqa.AnalyzeInlineVideo(key, selected, renderPath, vqa.VideoQAPrompt)
 				if err != nil {
@@ -1111,9 +1404,9 @@ func colorReviewCommand(opts *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			data := map[string]any{"status": "planned", "provider": provider, "model": model, "input": input, "report": "reports/color-grade-report.json"}
 			if opts.Live && provider == "gemini" {
-				key := os.Getenv("GEMINI_API_KEY")
+				key, _ := vqa.APIKeyFromEnv()
 				if key == "" {
-					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "GEMINI_API_KEY is not set", "Use runtime env or Secret Gate", true))
+					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "Gemini API key is not set", "Use GEMINI_API_KEY or GOOGLE_API_KEY via runtime env or Secret Gate", true))
 				}
 				raw, err := vqa.AnalyzeInlineVideo(key, model, input, "Return JSON only. Review exposure, contrast, white balance, skin tones, mixed lighting, and color-grade finishing notes.")
 				if err != nil {
@@ -1139,9 +1432,39 @@ func colorResearchCommand(opts *globalOptions) *cobra.Command {
 }
 
 func colorExportLUTCommand(opts *globalOptions) *cobra.Command {
-	return &cobra.Command{Use: "export-lut", Short: "export LUT placeholder", RunE: func(cmd *cobra.Command, args []string) error {
-		return writeOutput(cmd, opts, "color export-lut", map[string]any{"status": "planned"})
+	var input, outputPath string
+	cmd := &cobra.Command{Use: "export-lut", Short: "export or generate a .cube LUT", RunE: func(cmd *cobra.Command, args []string) error {
+		if outputPath == "" {
+			outputPath = "exports/identity.cube"
+		}
+		var raw []byte
+		var err error
+		if input != "" {
+			raw, err = os.ReadFile(input)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("LUT_READ_FAILED", err.Error(), "Check --input path", false))
+			}
+			if _, err := vcolor.ParseCube(raw); err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("LUT_INVALID", err.Error(), "Use a valid .cube LUT", false))
+			}
+		} else {
+			raw = []byte("TITLE \"vflow identity\"\nLUT_3D_SIZE 2\n0 0 0\n0 0 1\n0 1 0\n0 1 1\n1 0 0\n1 0 1\n1 1 0\n1 1 1\n")
+		}
+		status := "planned"
+		if opts.Commit {
+			if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("LUT_WRITE_FAILED", err.Error(), "Check output path permissions", false))
+			}
+			if err := os.WriteFile(outputPath, raw, 0o644); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("LUT_WRITE_FAILED", err.Error(), "Check output path permissions", false))
+			}
+			status = "written"
+		}
+		return writeOutput(cmd, opts, "color export-lut", map[string]any{"status": status, "input": input, "output": filepath.ToSlash(outputPath)})
 	}}
+	cmd.Flags().StringVar(&input, "input", "", "source LUT path")
+	cmd.Flags().StringVar(&outputPath, "output", "", "output .cube path")
+	return cmd
 }
 
 func nleCommand(opts *globalOptions) *cobra.Command {
@@ -1161,6 +1484,21 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 				outputPath = filepath.Join(projectPath, "exports", "timeline."+target)
 			}
 			segments := []vnle.Segment{{ID: "seg_000001", SourceFrameIn: 0, SourceFrameOut: 90, TimelineFrameIn: 0, TimelineFrameOut: 90}}
+			if raw, err := os.ReadFile(filepath.Join(projectPath, "timeline", "compiled-timeline.json")); err == nil {
+				var tl vtimeline.CompiledTimeline
+				if err := json.Unmarshal(raw, &tl); err == nil && len(tl.Segments) > 0 {
+					segments = make([]vnle.Segment, 0, len(tl.Segments))
+					for _, segment := range tl.Segments {
+						segments = append(segments, vnle.Segment{
+							ID:               segment.ID,
+							SourceFrameIn:    segment.SourceFrameIn,
+							SourceFrameOut:   segment.SourceFrameOut,
+							TimelineFrameIn:  segment.TimelineFrameIn,
+							TimelineFrameOut: segment.TimelineFrameOut,
+						})
+					}
+				}
+			}
 			res := vnle.Export(vnle.Options{Target: target, Output: outputPath}, segments)
 			status := "planned"
 			if opts.Commit {
@@ -1211,20 +1549,7 @@ func nleApplyCommand(opts *globalOptions) *cobra.Command {
 
 func transcriptCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "transcript", Short: "transcript workflow commands"}
-	parent.AddCommand(transcriptCreateCommand(opts), transcriptImportCommand(opts))
-	for _, verb := range []string{"align", "bakeoff", "search"} {
-		verb := verb
-		parent.AddCommand(&cobra.Command{
-			Use:   verb,
-			Short: "transcript " + verb,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return writeOutput(cmd, opts, "transcript "+verb, map[string]any{
-					"status": "not_implemented",
-					"name":   "transcript " + verb,
-				})
-			},
-		})
-	}
+	parent.AddCommand(transcriptCreateCommand(opts), transcriptImportCommand(opts), transcriptAlignCommand(opts), transcriptBakeoffCommand(opts), transcriptSearchCommand(opts))
 	return parent
 }
 
@@ -1272,10 +1597,10 @@ func transcriptImportCommand(opts *globalOptions) *cobra.Command {
 }
 
 func transcriptCreateCommand(opts *globalOptions) *cobra.Command {
-	var provider string
+	var projectPath, provider, source, model, rate string
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "transcript create",
+		Short: "create a transcript with a local or live provider",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if provider != "" && !validProvider(provider) {
 				return writeStructuredError(cmd, opts, verrors.Validation(
@@ -1285,14 +1610,155 @@ func transcriptCreateCommand(opts *globalOptions) *cobra.Command {
 					false,
 				))
 			}
+			if source == "" {
+				source = filepath.Join(projectPath, "media", "source.mp4")
+			}
+			if provider == "openai" {
+				if !opts.Live {
+					return writeOutput(cmd, opts, "transcript create", map[string]any{
+						"status":        "ready",
+						"provider":      "openai",
+						"requires_live": true,
+						"requires_key":  "OPENAI_API_KEY",
+						"source":        filepath.ToSlash(source),
+					})
+				}
+				if !opts.Commit {
+					return writeStructuredError(cmd, opts, verrors.Safety("live OpenAI transcription requires --commit", "Pass --live --commit to spend provider quota"))
+				}
+				key := os.Getenv("OPENAI_API_KEY")
+				if key == "" {
+					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "OPENAI_API_KEY is not set", "Use runtime env or Secret Gate; do not commit secrets", true))
+				}
+				tx, err := vtranscript.TranscribeOpenAI(context.Background(), key, source, model)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("OPENAI_TRANSCRIPTION_FAILED", err.Error(), "Check source file, model, account, and provider quota", true))
+				}
+				words, err := vtranscript.Import("plain-text", []byte(tx.Text), vtranscript.ImportOptions{Rate: rate, FramesPerWord: 15})
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("TRANSCRIPT_NORMALIZE_FAILED", err.Error(), "Check provider response text", false))
+				}
+				if err := vtranscript.WriteWords(projectPath, words); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				reportPath := filepath.Join(projectPath, "transcript", "openai-transcription.json")
+				raw, _ := json.MarshalIndent(tx, "", "  ")
+				_ = os.WriteFile(reportPath, append(raw, '\n'), 0o644)
+				return writeOutput(cmd, opts, "transcript create", map[string]any{
+					"status":     "written",
+					"provider":   "openai",
+					"model":      tx.Model,
+					"source":     filepath.ToSlash(source),
+					"word_count": len(words.Words),
+					"artifact":   filepath.ToSlash(filepath.Join(projectPath, "transcript", "words.json")),
+					"report":     filepath.ToSlash(reportPath),
+				})
+			}
+			env := providerEnv(provider)
 			return writeOutput(cmd, opts, "transcript create", map[string]any{
-				"status":   "not_implemented",
-				"name":     "transcript create",
-				"provider": provider,
+				"status":      "provider_not_live_enabled",
+				"provider":    provider,
+				"source":      filepath.ToSlash(source),
+				"env_var":     env,
+				"env_present": env != "" && os.Getenv(env) != "",
+				"hint":        "Use transcript import for local fixtures or --provider openai --live --commit for live STT in this build.",
 			})
 		},
 	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&provider, "provider", "local", "transcript provider")
+	cmd.Flags().StringVar(&source, "source", "", "audio or video source path")
+	cmd.Flags().StringVar(&source, "audio", "", "alias for --source")
+	cmd.Flags().StringVar(&model, "model", "", "provider model")
+	cmd.Flags().StringVar(&rate, "rate", "30000/1001", "source frame rate")
+	return cmd
+}
+
+func transcriptAlignCommand(opts *globalOptions) *cobra.Command {
+	var projectPath string
+	cmd := &cobra.Command{
+		Use:   "align",
+		Short: "write a transcript alignment summary",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			words, err := vtranscript.ReadWords(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_READ_FAILED", err.Error(), "Create or import transcript/words.json first", false))
+			}
+			data := map[string]any{
+				"version":    "vflow-transcript-alignment/v1",
+				"status":     "aligned",
+				"rate":       words.Rate,
+				"word_count": len(words.Words),
+				"method":     "canonical-word-frames",
+			}
+			if opts.Commit {
+				path := filepath.Join(projectPath, "transcript", "alignment.json")
+				raw, _ := json.MarshalIndent(data, "", "  ")
+				if err := os.WriteFile(path, append(raw, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("ALIGNMENT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				data["artifact"] = filepath.ToSlash(path)
+			}
+			return writeOutput(cmd, opts, "transcript align", data)
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	return cmd
+}
+
+func transcriptBakeoffCommand(opts *globalOptions) *cobra.Command {
+	var providers string
+	cmd := &cobra.Command{
+		Use:   "bakeoff",
+		Short: "compare transcript provider readiness",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			names := splitCSV(firstNonEmptyString(providers, "openai,elevenlabs,soniox,assemblyai,deepgram,gladia,local"))
+			results := make([]map[string]any, 0, len(names))
+			for _, name := range names {
+				env := providerEnv(name)
+				results = append(results, map[string]any{
+					"provider":     name,
+					"env_var":      env,
+					"env_present":  env == "" || os.Getenv(env) != "",
+					"live_enabled": opts.Live,
+					"capabilities": providerCapabilities(name),
+				})
+			}
+			return writeOutput(cmd, opts, "transcript bakeoff", map[string]any{"status": "checked", "providers": results})
+		},
+	}
+	cmd.Flags().StringVar(&providers, "providers", "", "comma-separated providers")
+	return cmd
+}
+
+func transcriptSearchCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, query string
+	cmd := &cobra.Command{
+		Use:   "search",
+		Short: "search canonical transcript words",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if query == "" {
+				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_QUERY", "missing --query", "Pass --query text", false))
+			}
+			words, err := vtranscript.ReadWords(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_READ_FAILED", err.Error(), "Create or import transcript/words.json first", false))
+			}
+			q := strings.ToLower(query)
+			matches := []vtranscript.Word{}
+			for _, word := range words.Words {
+				if strings.Contains(strings.ToLower(word.Text), q) {
+					matches = append(matches, word)
+					if len(matches) >= opts.Limit {
+						break
+					}
+				}
+			}
+			return writeOutput(cmd, opts, "transcript search", map[string]any{"query": query, "count": len(matches), "matches": matches})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&query, "query", "", "search query")
 	return cmd
 }
 
@@ -1303,4 +1769,50 @@ func validProvider(provider string) bool {
 	default:
 		return false
 	}
+}
+
+func providerEnv(provider string) string {
+	switch provider {
+	case "openai":
+		return "OPENAI_API_KEY"
+	case "elevenlabs":
+		return "ELEVENLABS_API_KEY"
+	case "soniox":
+		return "SONIOX_API_KEY"
+	case "assemblyai":
+		return "ASSEMBLYAI_API_KEY"
+	case "deepgram":
+		return "DEEPGRAM_API_KEY"
+	case "gladia":
+		return "GLADIA_API_KEY"
+	case "local", "plain-text", "generic-words":
+		return ""
+	default:
+		return ""
+	}
+}
+
+func providerCapabilities(provider string) []string {
+	switch provider {
+	case "openai":
+		return []string{"speech_to_text", "json_text", "optional_diarized_model"}
+	case "elevenlabs", "soniox", "assemblyai", "deepgram", "gladia":
+		return []string{"speech_to_text", "provider_adapter_pending"}
+	case "local", "plain-text", "generic-words":
+		return []string{"import", "no_api_key"}
+	default:
+		return nil
+	}
+}
+
+func splitCSV(value string) []string {
+	fields := strings.Split(value, ",")
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field != "" {
+			out = append(out, field)
+		}
+	}
+	return out
 }

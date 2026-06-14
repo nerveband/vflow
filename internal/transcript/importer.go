@@ -90,3 +90,15 @@ func WriteWords(projectPath string, words Words) error {
 	}
 	return os.WriteFile(path, append(raw, '\n'), 0o644)
 }
+
+func ReadWords(projectPath string) (Words, error) {
+	raw, err := os.ReadFile(filepath.Join(projectPath, "transcript", "words.json"))
+	if err != nil {
+		return Words{}, err
+	}
+	var words Words
+	if err := json.Unmarshal(raw, &words); err != nil {
+		return Words{}, err
+	}
+	return words, nil
+}

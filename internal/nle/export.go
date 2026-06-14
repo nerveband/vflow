@@ -45,8 +45,10 @@ func exportText(res ExportResult) string {
 	switch res.Target {
 	case "edl":
 		return "TITLE: vflow\nFCM: NON-DROP FRAME"
-	case "fcpxml":
+	case "fcpxml", "resolve":
 		return `<?xml version="1.0" encoding="UTF-8"?><fcpxml version="1.11"></fcpxml>`
+	case "premiere":
+		return `<?xml version="1.0" encoding="UTF-8"?><xmeml version="5"></xmeml>`
 	case "mlt":
 		return `<mlt title="vflow"></mlt>`
 	case "otio":

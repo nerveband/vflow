@@ -14,3 +14,11 @@ func TestPreviewPlanUsesTrimConcatAndAudioFades(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewPlanFadeOutTracksDuration(t *testing.T) {
+	plan := PreviewPlan(Options{Input: "source.mp4", Output: "rough.mp4", Target: "youtube_16x9", MaxSeconds: 1})
+	joined := strings.Join(plan.Command, " ")
+	if !strings.Contains(joined, "afade=t=out:st=0.97:d=0.03") {
+		t.Fatalf("expected one-second fade-out start in %s", joined)
+	}
+}

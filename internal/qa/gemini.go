@@ -49,10 +49,10 @@ func Doctor(model string, live bool) (DoctorResult, error) {
 	if err != nil {
 		return DoctorResult{}, err
 	}
-	key := os.Getenv("GEMINI_API_KEY")
+	key, source := APIKeyFromEnv()
 	res := DoctorResult{Provider: "gemini", OK: key != "", KeyPresent: key != "", SelectedModel: selected, Live: live}
 	if key != "" {
-		res.KeySource = "env:GEMINI_API_KEY"
+		res.KeySource = source
 	} else {
 		res.ErrorCode = "MISSING_API_KEY"
 	}
@@ -74,11 +74,22 @@ func Doctor(model string, live bool) (DoctorResult, error) {
 	return res, nil
 }
 
+func APIKeyFromEnv() (string, string) {
+	for _, key := range []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"} {
+		value := strings.TrimSpace(os.Getenv(key))
+		if value != "" {
+			return value, "env:" + key
+		}
+	}
+	return "", ""
+}
+
 func ListModels(apiKey string) ([]string, error) {
-	req, err := http.NewRequest(http.MethodGet, "https://generativelanguage.googleapis.com/v1beta/models?key="+apiKey, nil)
+	req, err := http.NewRequest(http.MethodGet, "https://generativelanguage.googleapis.com/v1beta/models", nil)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -87,7 +98,7 @@ func ListModels(apiKey string) ([]string, error) {
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("Gemini models endpoint returned %s", resp.Status)
+		return nil, fmt.Errorf("Gemini models endpoint returned %s: %s", resp.Status, compactProviderBody(raw))
 	}
 	var body struct {
 		Models []struct {
@@ -114,15 +125,21 @@ func AnalyzeTextOnly(apiKey, model, prompt string) (string, error) {
 		"generationConfig": map[string]string{"response_mime_type": "application/json"},
 	}
 	raw, _ := json.Marshal(body)
-	url := "https://generativelanguage.googleapis.com/v1beta/models/" + selected + ":generateContent?key=" + apiKey
-	resp, err := http.Post(url, "application/json", bytes.NewReader(raw))
+	url := "https://generativelanguage.googleapis.com/v1beta/models/" + selected + ":generateContent"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
+	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 	out, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("Gemini generateContent returned %s", resp.Status)
+		return "", fmt.Errorf("Gemini generateContent returned %s: %s", resp.Status, compactProviderBody(out))
 	}
 	return string(out), nil
 }
@@ -140,21 +157,37 @@ func AnalyzeInlineVideo(apiKey, model, videoPath, prompt string) (string, error)
 		"contents": []map[string]any{{
 			"parts": []map[string]any{
 				{"text": prompt},
-				{"inline_data": map[string]string{"mime_type": "video/mp4", "data": base64.StdEncoding.EncodeToString(video)}},
+				{"inlineData": map[string]string{"mimeType": "video/mp4", "data": base64.StdEncoding.EncodeToString(video)}},
 			},
 		}},
 		"generationConfig": map[string]string{"response_mime_type": "application/json"},
 	}
 	raw, _ := json.Marshal(body)
-	url := "https://generativelanguage.googleapis.com/v1beta/models/" + selected + ":generateContent?key=" + apiKey
-	resp, err := http.Post(url, "application/json", bytes.NewReader(raw))
+	url := "https://generativelanguage.googleapis.com/v1beta/models/" + selected + ":generateContent"
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
+	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 	out, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("Gemini generateContent returned %s", resp.Status)
+		return "", fmt.Errorf("Gemini generateContent returned %s: %s", resp.Status, compactProviderBody(out))
 	}
 	return string(out), nil
+}
+
+func compactProviderBody(raw []byte) string {
+	text := strings.TrimSpace(string(raw))
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) > 400 {
+		return text[:400] + "..."
+	}
+	return text
 }
