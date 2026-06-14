@@ -12,9 +12,11 @@ import (
 
 	vcleanup "github.com/nerveband/vflow/internal/cleanup"
 	vcolor "github.com/nerveband/vflow/internal/color"
+	vconfig "github.com/nerveband/vflow/internal/config"
 	"github.com/nerveband/vflow/internal/contract"
 	verrors "github.com/nerveband/vflow/internal/errors"
 	vframing "github.com/nerveband/vflow/internal/framing"
+	vjobs "github.com/nerveband/vflow/internal/jobs"
 	vmedia "github.com/nerveband/vflow/internal/media"
 	vnle "github.com/nerveband/vflow/internal/nle"
 	"github.com/nerveband/vflow/internal/output"
@@ -262,38 +264,160 @@ func feedbackCommand(opts *globalOptions) *cobra.Command {
 
 func configCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "config", Short: "config commands"}
-	parent.AddCommand(&cobra.Command{Use: "inspect", Short: "inspect config", RunE: func(cmd *cobra.Command, args []string) error {
-		return writeOutput(cmd, opts, "config inspect", map[string]any{"path": "~/.vflow/config.yaml", "redacted": true, "defaults": map[string]string{"format": "json", "project_root": "."}})
-	}})
-	parent.AddCommand(&cobra.Command{Use: "defaults", Short: "show defaults", RunE: func(cmd *cobra.Command, args []string) error {
-		return writeOutput(cmd, opts, "config defaults", map[string]any{"format": "json", "project_root": ".", "data_source": "auto"})
-	}})
-	parent.AddCommand(&cobra.Command{Use: "set-defaults", Short: "set defaults", RunE: func(cmd *cobra.Command, args []string) error {
+	parent.AddCommand(configInspectCommand(opts), configDefaultsCommand(opts), configSetDefaultsCommand(opts))
+	return parent
+}
+
+func configInspectCommand(opts *globalOptions) *cobra.Command {
+	return &cobra.Command{Use: "inspect", Short: "inspect config", RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := vconfig.Load()
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("CONFIG_READ_FAILED", err.Error(), "Check VFLOW_CONFIG_PATH or ~/.vflow/config.yaml", false))
+		}
+		path, _ := vconfig.Path()
+		return writeOutput(cmd, opts, "config inspect", map[string]any{"path": filepath.ToSlash(path), "redacted": true, "config": cfg.Redacted()})
+	}}
+}
+
+func configDefaultsCommand(opts *globalOptions) *cobra.Command {
+	return &cobra.Command{Use: "defaults", Short: "show defaults", RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := vconfig.Load()
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("CONFIG_READ_FAILED", err.Error(), "Check VFLOW_CONFIG_PATH or ~/.vflow/config.yaml", false))
+		}
+		return writeOutput(cmd, opts, "config defaults", cfg.Defaults)
+	}}
+}
+
+func configSetDefaultsCommand(opts *globalOptions) *cobra.Command {
+	var format, projectRoot, dataSource string
+	cmd := &cobra.Command{Use: "set-defaults", Short: "set defaults", RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := vconfig.Load()
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("CONFIG_READ_FAILED", err.Error(), "Check VFLOW_CONFIG_PATH or ~/.vflow/config.yaml", false))
+		}
+		if format != "" {
+			cfg.Defaults.Format = format
+		}
+		if projectRoot != "" {
+			cfg.Defaults.ProjectRoot = projectRoot
+		}
+		if dataSource != "" {
+			cfg.Defaults.DataSource = dataSource
+		}
 		status := "planned"
 		if opts.Commit {
+			if err := vconfig.Save(cfg); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("CONFIG_WRITE_FAILED", err.Error(), "Check config path permissions", false))
+			}
 			status = "written"
 		}
-		return writeOutput(cmd, opts, "config set-defaults", map[string]any{"status": status})
-	}})
-	return parent
+		return writeOutput(cmd, opts, "config set-defaults", map[string]any{"status": status, "defaults": cfg.Defaults})
+	}}
+	cmd.Flags().StringVar(&format, "output-format", "", "default output format")
+	cmd.Flags().StringVar(&projectRoot, "project-root", "", "default project root")
+	cmd.Flags().StringVar(&dataSource, "data-source", "", "default data source")
+	return cmd
 }
 
 func profileCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "profile", Short: "profile commands"}
-	for _, verb := range []string{"list", "show", "set", "use"} {
-		verb := verb
-		parent.AddCommand(&cobra.Command{Use: verb, Short: "profile " + verb, RunE: func(cmd *cobra.Command, args []string) error {
-			status := "available"
-			if verb == "set" || verb == "use" {
-				status = "planned"
-				if opts.Commit {
-					status = "written"
-				}
-			}
-			return writeOutput(cmd, opts, "profile "+verb, map[string]any{"status": status, "secrets_redacted": true})
-		}})
-	}
+	parent.AddCommand(profileListCommand(opts), profileShowCommand(opts), profileSetCommand(opts), profileUseCommand(opts))
 	return parent
+}
+
+func profileListCommand(opts *globalOptions) *cobra.Command {
+	return &cobra.Command{Use: "list", Short: "profile list", RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := vconfig.Load()
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("CONFIG_READ_FAILED", err.Error(), "Check config path", false))
+		}
+		names := make([]string, 0, len(cfg.Profiles))
+		for name := range cfg.Profiles {
+			names = append(names, name)
+		}
+		return writeOutput(cmd, opts, "profile list", map[string]any{"default_profile": cfg.DefaultProfile, "profiles": names})
+	}}
+}
+
+func profileShowCommand(opts *globalOptions) *cobra.Command {
+	return &cobra.Command{Use: "show [name]", Short: "profile show", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := vconfig.Load()
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("CONFIG_READ_FAILED", err.Error(), "Check config path", false))
+		}
+		name := cfg.DefaultProfile
+		if len(args) > 0 {
+			name = args[0]
+		}
+		profile, ok := cfg.Redacted().Profiles[name]
+		if !ok {
+			return writeStructuredError(cmd, opts, verrors.Validation("PROFILE_NOT_FOUND", "profile not found", "Run vflow profile list --format json", false))
+		}
+		return writeOutput(cmd, opts, "profile show", map[string]any{"name": name, "profile": profile, "secrets_redacted": true})
+	}}
+}
+
+func profileSetCommand(opts *globalOptions) *cobra.Command {
+	var name, provider, apiKeyEnv, apiKey string
+	cmd := &cobra.Command{Use: "set", Short: "profile set", RunE: func(cmd *cobra.Command, args []string) error {
+		if name == "" || provider == "" {
+			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_PROFILE_INPUT", "missing profile name or provider", "Pass --name and --provider", false))
+		}
+		cfg, err := vconfig.Load()
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("CONFIG_READ_FAILED", err.Error(), "Check config path", false))
+		}
+		profile := cfg.Profiles[name]
+		if profile.Providers == nil {
+			profile.Providers = map[string]vconfig.Provider{}
+		}
+		profile.Providers[provider] = vconfig.Provider{APIKeyEnv: apiKeyEnv, APIKey: apiKey}
+		cfg.Profiles[name] = profile
+		status := "planned"
+		if opts.Commit {
+			if err := vconfig.Save(cfg); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("CONFIG_WRITE_FAILED", err.Error(), "Check config path permissions", false))
+			}
+			status = "written"
+		}
+		return writeOutput(cmd, opts, "profile set", map[string]any{"status": status, "name": name, "provider": provider, "api_key_env": apiKeyEnv, "stored_value_redacted": apiKey != ""})
+	}}
+	cmd.Flags().StringVar(&name, "name", "", "profile name")
+	cmd.Flags().StringVar(&provider, "provider", "", "provider name")
+	cmd.Flags().StringVar(&apiKeyEnv, "api-key-env", "", "environment variable containing the key")
+	cmd.Flags().StringVar(&apiKey, "api-key", "", "raw API key value; prefer --api-key-env")
+	return cmd
+}
+
+func profileUseCommand(opts *globalOptions) *cobra.Command {
+	var name string
+	cmd := &cobra.Command{Use: "use [name]", Short: "profile use", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if name == "" && len(args) > 0 {
+			name = args[0]
+		}
+		if name == "" {
+			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_PROFILE", "missing profile name", "Pass vflow profile use NAME", false))
+		}
+		cfg, err := vconfig.Load()
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("CONFIG_READ_FAILED", err.Error(), "Check config path", false))
+		}
+		if _, ok := cfg.Profiles[name]; !ok {
+			return writeStructuredError(cmd, opts, verrors.Validation("PROFILE_NOT_FOUND", "profile not found", "Run vflow profile list --format json", false))
+		}
+		cfg.DefaultProfile = name
+		status := "planned"
+		if opts.Commit {
+			if err := vconfig.Save(cfg); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("CONFIG_WRITE_FAILED", err.Error(), "Check config path permissions", false))
+			}
+			status = "written"
+		}
+		return writeOutput(cmd, opts, "profile use", map[string]any{"status": status, "default_profile": name})
+	}}
+	cmd.Flags().StringVar(&name, "name", "", "profile name")
+	return cmd
 }
 
 func authCommand(opts *globalOptions) *cobra.Command {
@@ -309,13 +433,30 @@ func authCommand(opts *globalOptions) *cobra.Command {
 }
 
 func jobsCommand(opts *globalOptions) *cobra.Command {
+	var projectPath string
 	parent := &cobra.Command{Use: "jobs", Short: "job ledger commands"}
-	for _, verb := range []string{"list", "get", "resume"} {
-		verb := verb
-		parent.AddCommand(&cobra.Command{Use: verb, Short: "jobs " + verb, RunE: func(cmd *cobra.Command, args []string) error {
-			return writeOutput(cmd, opts, "jobs "+verb, map[string]any{"status": "available", "jobs": []any{}})
-		}})
-	}
+	parent.PersistentFlags().StringVar(&projectPath, "project", ".", "project path")
+	parent.AddCommand(&cobra.Command{Use: "list", Short: "jobs list", RunE: func(cmd *cobra.Command, args []string) error {
+		records, err := vjobs.List(projectPath)
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("JOBS_LIST_FAILED", err.Error(), "Check project jobs directory", false))
+		}
+		return writeOutput(cmd, opts, "jobs list", map[string]any{"status": "available", "project": projectPath, "jobs": records})
+	}})
+	parent.AddCommand(&cobra.Command{Use: "get [job_id]", Short: "jobs get", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		record, err := vjobs.Get(projectPath, args[0])
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.Validation("JOB_NOT_FOUND", err.Error(), "Run vflow jobs list --project PROJECT", false))
+		}
+		return writeOutput(cmd, opts, "jobs get", record)
+	}})
+	parent.AddCommand(&cobra.Command{Use: "resume [job_id]", Short: "jobs resume", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		record, err := vjobs.Get(projectPath, args[0])
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.Validation("JOB_NOT_FOUND", err.Error(), "Run vflow jobs list --project PROJECT", false))
+		}
+		return writeOutput(cmd, opts, "jobs resume", record)
+	}})
 	return parent
 }
 
@@ -348,13 +489,11 @@ func artifactsCommand(opts *globalOptions) *cobra.Command {
 		outputPath := ""
 		if opts.Commit && strings.HasPrefix(deliver, "file:") {
 			outputPath = strings.TrimPrefix(deliver, "file:")
-			if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
-				return writeStructuredError(cmd, opts, verrors.External("ARTIFACT_DELIVER_FAILED", err.Error(), "Check delivery path", false))
-			}
-			if err := copyFile(input, outputPath); err != nil {
+			res, err := output.DeliverFile(input, outputPath, opts.Overwrite)
+			if err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("ARTIFACT_DELIVER_FAILED", err.Error(), "Check artifact and delivery path", false))
 			}
-			status = "delivered"
+			status = res.Status
 		} else if opts.Commit && deliver == "stdout" {
 			status = "available_on_stdout"
 		}
@@ -742,7 +881,7 @@ func cleanupSuggestCommand(opts *globalOptions) *cobra.Command {
 }
 
 func cleanupReviewCommand(opts *globalOptions) *cobra.Command {
-	var projectPath string
+	var projectPath, deliver string
 	cmd := &cobra.Command{
 		Use:   "review",
 		Short: "review cleanup decisions",
@@ -751,16 +890,47 @@ func cleanupReviewCommand(opts *globalOptions) *cobra.Command {
 			if err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("CONTENT_EDL_READ_FAILED", err.Error(), "Run cleanup apply --commit first", false))
 			}
-			return writeOutput(cmd, opts, "cleanup review", map[string]any{
+			data := map[string]any{
 				"status":       "reviewed",
 				"delete_count": len(edl.DeleteSegments),
 				"rate":         edl.Rate,
 				"needs_review": []any{},
-			})
+			}
+			if opts.Commit && strings.HasPrefix(deliver, "file:") {
+				path := strings.TrimPrefix(deliver, "file:")
+				if err := writeCleanupReviewHTML(path, edl); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("CLEANUP_REVIEW_WRITE_FAILED", err.Error(), "Check --deliver path", false))
+				}
+				data["artifact"] = filepath.ToSlash(path)
+			}
+			return writeOutput(cmd, opts, "cleanup review", data)
 		},
 	}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&deliver, "deliver", "", "delivery target, e.g. file:review/cleanup-review.html")
 	return cmd
+}
+
+func writeCleanupReviewHTML(path string, edl vcleanup.ContentEDL) error {
+	var b strings.Builder
+	b.WriteString("<!doctype html><meta charset=\"utf-8\"><title>vflow cleanup review</title><main>")
+	b.WriteString("<h1>Cleanup Review</h1><table><thead><tr><th>ID</th><th>Frames</th><th>Reason</th><th>Confidence</th></tr></thead><tbody>")
+	for _, del := range edl.DeleteSegments {
+		b.WriteString("<tr><td>")
+		b.WriteString(del.ID)
+		b.WriteString("</td><td>")
+		b.WriteString(fmt.Sprintf("%d-%d", del.StartFrame, del.EndFrame))
+		b.WriteString("</td><td>")
+		b.WriteString(del.Reason)
+		b.WriteString("</td><td>")
+		b.WriteString(fmt.Sprintf("%.2f", del.Confidence))
+		b.WriteString("</td></tr>")
+	}
+	b.WriteString("</tbody></table></main>")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
 func cleanupApplyCommand(opts *globalOptions) *cobra.Command {
@@ -1246,8 +1416,10 @@ func renderPreviewCommand(opts *globalOptions) *cobra.Command {
 			status := "planned"
 			if opts.Commit {
 				if err := vrender.Run(plan); err != nil {
+					_ = vjobs.Write(projectPath, vjobs.NewRecord(projectPath, "render preview", "failed", true))
 					return writeStructuredError(cmd, opts, verrors.External("FFMPEG_RENDER_FAILED", err.Error(), "Check ffmpeg, source path, and codecs", false))
 				}
+				_ = vjobs.Write(projectPath, vjobs.NewRecord(projectPath, "render preview", "succeeded", true))
 				status = "rendered"
 			}
 			_ = vrender.WriteReport(reportPath, plan, status)
@@ -1263,20 +1435,42 @@ func renderPreviewCommand(opts *globalOptions) *cobra.Command {
 }
 
 func renderVerifyCommand(opts *globalOptions) *cobra.Command {
-	var renderPath string
+	var renderPath, ffprobePath, ffprobeJSON string
+	var expectedWidth, expectedHeight int
+	var expectedDuration float64
 	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "verify a rendered preview",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			status := "missing"
+			if ffprobeJSON != "" {
+				raw, err := os.ReadFile(ffprobeJSON)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("FFPROBE_JSON_READ_FAILED", err.Error(), "Check --ffprobe-json path", false))
+				}
+				result, err := vrender.VerifyProbe(raw, vrender.VerifyOptions{Render: renderPath, ExpectedWidth: expectedWidth, ExpectedHeight: expectedHeight, ExpectedDurationSeconds: expectedDuration})
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("FFPROBE_JSON_INVALID", err.Error(), "Pass valid ffprobe JSON", false))
+				}
+				return writeOutput(cmd, opts, "render verify", result)
+			}
 			if _, err := os.Stat(renderPath); err == nil {
-				status = "exists"
+				result, err := vrender.VerifyFile(ffprobePath, vrender.VerifyOptions{Render: renderPath, ExpectedWidth: expectedWidth, ExpectedHeight: expectedHeight, ExpectedDurationSeconds: expectedDuration})
+				if err == nil {
+					return writeOutput(cmd, opts, "render verify", result)
+				}
+				return writeOutput(cmd, opts, "render verify", vrender.VerifyResult{Status: "exists", Render: renderPath, Issues: []string{"ffprobe_failed: " + err.Error()}})
 			}
 			return writeOutput(cmd, opts, "render verify", vrender.VerifyResult{Status: status, Render: renderPath})
 		},
 	}
 	cmd.Flags().StringVar(&renderPath, "render", "renders/rough-preview.mp4", "render path")
 	cmd.Flags().StringVar(&renderPath, "input", "renders/rough-preview.mp4", "alias for --render")
+	cmd.Flags().StringVar(&ffprobePath, "ffprobe-path", "", "ffprobe binary path")
+	cmd.Flags().StringVar(&ffprobeJSON, "ffprobe-json", "", "read ffprobe JSON from file instead of executing ffprobe")
+	cmd.Flags().IntVar(&expectedWidth, "expected-width", 0, "expected render width")
+	cmd.Flags().IntVar(&expectedHeight, "expected-height", 0, "expected render height")
+	cmd.Flags().Float64Var(&expectedDuration, "expected-duration", 0, "expected duration in seconds")
 	return cmd
 }
 
@@ -1397,12 +1591,26 @@ func colorApplyCommand(opts *globalOptions) *cobra.Command {
 }
 
 func colorReviewCommand(opts *globalOptions) *cobra.Command {
-	var provider, model, input string
+	var projectPath, provider, model, input string
 	cmd := &cobra.Command{
 		Use:   "review",
 		Short: "review color/exposure with optional Gemini analysis",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			data := map[string]any{"status": "planned", "provider": provider, "model": model, "input": input, "report": "reports/color-grade-report.json"}
+			reportPath := filepath.Join(projectPath, "reports", "color-grade-report.json")
+			data := map[string]any{
+				"version":    "vflow-color-grade-report/v1",
+				"status":     "planned",
+				"provider":   provider,
+				"model":      model,
+				"input":      input,
+				"report":     filepath.ToSlash(reportPath),
+				"confidence": 0,
+				"observations": []map[string]any{{
+					"code":       "manual_review_required",
+					"message":    "Review exposure, contrast, white balance, skin tones, and mixed lighting before final delivery.",
+					"confidence": 0.5,
+				}},
+			}
 			if opts.Live && provider == "gemini" {
 				key, _ := vqa.APIKeyFromEnv()
 				if key == "" {
@@ -1415,9 +1623,22 @@ func colorReviewCommand(opts *globalOptions) *cobra.Command {
 				data["provider_response"] = json.RawMessage(raw)
 				data["status"] = "analyzed"
 			}
+			if opts.Commit {
+				if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("COLOR_REPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				raw, _ := json.MarshalIndent(data, "", "  ")
+				if err := os.WriteFile(reportPath, append(raw, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("COLOR_REPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				if data["status"] == "planned" {
+					data["status"] = "written"
+				}
+			}
 			return writeOutput(cmd, opts, "color review", data)
 		},
 	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&provider, "provider", "gemini", "provider")
 	cmd.Flags().StringVar(&model, "model", "", "model")
 	cmd.Flags().StringVar(&input, "input", "", "input render path")
@@ -1517,21 +1738,77 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 }
 
 func nleImportCommand(opts *globalOptions) *cobra.Command {
-	var input string
+	var projectPath, input string
 	cmd := &cobra.Command{Use: "import", Short: "import NLE timeline", RunE: func(cmd *cobra.Command, args []string) error {
-		return writeOutput(cmd, opts, "nle import", map[string]any{"status": "parsed", "input": input, "changes": []any{}})
+		if input == "" {
+			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass --input timeline file", false))
+		}
+		raw, err := os.ReadFile(input)
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("NLE_IMPORT_READ_FAILED", err.Error(), "Check --input path", false))
+		}
+		data := map[string]any{
+			"version": "vflow-nle-import/v1",
+			"status":  "parsed",
+			"input":   filepath.ToSlash(input),
+			"bytes":   len(raw),
+			"changes": []any{},
+		}
+		if opts.Commit {
+			path := filepath.Join(projectPath, "imports", "nle-import.json")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("NLE_IMPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+			}
+			out, _ := json.MarshalIndent(data, "", "  ")
+			if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("NLE_IMPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+			}
+			data["artifact"] = filepath.ToSlash(path)
+		}
+		return writeOutput(cmd, opts, "nle import", data)
 	}}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&input, "input", "", "input timeline path")
 	return cmd
 }
 
 func nleDiffCommand(opts *globalOptions) *cobra.Command {
-	var input string
+	var projectPath, input, deliver string
 	cmd := &cobra.Command{Use: "diff", Short: "classify NLE roundtrip diff", RunE: func(cmd *cobra.Command, args []string) error {
-		return writeOutput(cmd, opts, "nle diff", map[string]any{"status": "classified", "import": input, "safe_merge": []any{}, "needs_review": []any{}, "blocked": []any{}})
+		data := map[string]any{"status": "classified", "import": input, "safe_merge": []any{}, "needs_review": []any{}, "blocked": []any{}}
+		if strings.HasPrefix(deliver, "file:") {
+			path := strings.TrimPrefix(deliver, "file:")
+			if err := writeRoundtripReviewHTML(path, data); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("NLE_DIFF_REVIEW_WRITE_FAILED", err.Error(), "Check --deliver path", false))
+			}
+			data["artifact"] = filepath.ToSlash(path)
+		}
+		_ = projectPath
+		return writeOutput(cmd, opts, "nle diff", data)
 	}}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&input, "import", "", "import artifact")
+	cmd.Flags().StringVar(&deliver, "deliver", "", "delivery target")
 	return cmd
+}
+
+func writeRoundtripReviewHTML(path string, data map[string]any) error {
+	var b strings.Builder
+	b.WriteString("<!doctype html><meta charset=\"utf-8\"><title>vflow roundtrip review</title><main>")
+	b.WriteString("<h1>Roundtrip Review</h1>")
+	for _, section := range []string{"safe_merge", "needs_review", "blocked"} {
+		b.WriteString("<section><h2>")
+		b.WriteString(section)
+		b.WriteString("</h2><pre>")
+		raw, _ := json.MarshalIndent(data[section], "", "  ")
+		b.Write(raw)
+		b.WriteString("</pre></section>")
+	}
+	b.WriteString("</main>")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
 func nleApplyCommand(opts *globalOptions) *cobra.Command {
