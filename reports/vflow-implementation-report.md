@@ -9,6 +9,7 @@ Date: 2026-06-14
 - Commit-gated project/media/transcript/cleanup/framing/timeline/render/QA/color/NLE/artifact commands.
 - YAML-backed `config` and `profile` commands using `VFLOW_CONFIG_PATH` for isolated tests and `~/.vflow/config.yaml` by default.
 - Durable JSON job ledger under `project/jobs/` with `jobs list/get/resume`; committed preview renders now write job records.
+- SQLite/FTS project index using `modernc.org/sqlite`: `project index --path` writes `~/.vflow/index.sqlite` or `$VFLOW_INDEX_PATH`, plus project `reports/provenance.json`; `transcript search --data-source local` reads the FTS index.
 - Atomic file artifact delivery with overwrite gating.
 - Live `ffprobe` source review, ffmpeg preview renders, ffmpeg LUT renders, render verification, and NLE sidecars.
 - Render verification parses ffprobe JSON/evidence for duration, resolution, codec, audio streams, and frame count.
@@ -62,6 +63,8 @@ go run ./cmd/vflow nle import --project tmp/continuation-proof/project --input t
 go run ./cmd/vflow nle diff --project tmp/continuation-proof/project --import tmp/continuation-proof/project/imports/nle-import.json --deliver file:tmp/continuation-proof/project/review/roundtrip-review.html --format json
 go run ./cmd/vflow nle diff --project fixtures/project/basic --import fixtures/nle/roundtrip.fcpxml --format json
 go run ./cmd/vflow color review --project tmp/continuation-proof/project --input tmp/continuation-proof/project/renders/rough-preview.mp4 --commit --format json
+VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow project index --path work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --commit --format json
+VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow transcript search --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --query Executive --data-source local --limit 5 --format json
 ```
 
 Results:
@@ -73,6 +76,7 @@ Results:
 - NLE import wrote `imports/nle-import.json`; NLE diff wrote `review/roundtrip-review.html`.
 - Fixture NLE diff classified `clip_trim`, `marker_note`, and `audio_level` as safe, `crop_change` and `title_card` as needs-review, `color_grade` as blocked, and `unclassified: []`.
 - Color review wrote `reports/color-grade-report.json`.
+- SQLite project index wrote `tmp/index-proof/index.sqlite` and fixture `reports/provenance.json`; local FTS transcript search returned five `Executive` hits with project ID, word IDs, and frame ranges.
 
 ## Synthetic Live Proof
 
@@ -169,6 +173,8 @@ go run ./cmd/vflow nle export --project work/test-projects/cair-ga-10yr-executiv
 go run ./cmd/vflow nle import --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/exports/timeline.fcpxml --commit --format json
 go run ./cmd/vflow nle diff --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --import work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/imports/nle-import.json --deliver file:work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/review/roundtrip-review.html --format json
 go run ./cmd/vflow nle apply --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/imports/nle-import.json --commit --format json --format-error json
+VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow project index --path work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --commit --format json
+VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow transcript search --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --query Executive --data-source local --limit 5 --format json
 ```
 
 Fixture proof:
@@ -182,6 +188,8 @@ Fixture proof:
 - FCPXML import wrote `imports/nle-import.json` with `clip_trim` and `marker_note`.
 - NLE diff wrote `review/roundtrip-review.html` with two `safe_merge` changes and no needs-review, blocked, or unclassified changes.
 - Guarded NLE apply wrote `imports/applied-nle-changes.json`.
+- Project index wrote SQLite/FTS rows for one project, four sources, 19,273 transcript words, 15 artifacts, and four NLE events.
+- Local FTS search returned five `Executive` transcript matches from the fixture with canonical frame ranges.
 
 ## Remaining Work
 
@@ -189,5 +197,4 @@ Fixture proof:
 - Add accepted-review artifact semantics for needs-review NLE changes before canonical timeline mutation.
 - Add live adapters for ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia once runtime keys are available.
 - Add Gemini Files API upload path for large videos after rotating the expired key.
-- Add SQLite/FTS project indexing if the plan remains strict on that storage backend.
 - Raise `audit cli` target from 72 toward the planned 80+ alpha threshold.

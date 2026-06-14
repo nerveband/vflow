@@ -31,6 +31,7 @@ This audit checks the active goal against current repo state and command output.
 - `nle import` writes neutral `imports/nle-import.json`; `nle diff` classifies safe/review/blocked/unclassified buckets and can write an HTML roundtrip review.
 - `nle apply --commit` refuses blocked or unreviewed changes and writes `imports/applied-nle-changes.json` for safe changes.
 - `color review` writes `reports/color-grade-report.json` without requiring Gemini.
+- `project index --path` writes a SQLite/FTS index via `modernc.org/sqlite` and project `reports/provenance.json`; `transcript search --data-source local` returns FTS transcript hits with project IDs and frame ranges.
 
 ## Not Yet Fully Proven
 
@@ -38,7 +39,6 @@ This audit checks the active goal against current repo state and command output.
 - Accepted-review artifact semantics for needs-review NLE changes are not yet implemented beyond blocking unsafe commit.
 - Gemini Files API upload path for large videos is not implemented; current path is inline video and live use is blocked until the expired key is rotated.
 - ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia live STT adapters are not implemented beyond readiness/config metadata.
-- SQLite/FTS indexing from the written plan is not implemented.
 - Audit score remains `72`, below the plan’s eventual public-use target of `80+`.
 
 ## Current Decision

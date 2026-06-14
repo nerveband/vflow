@@ -22,4 +22,19 @@ func TestSchemaValidateReportsCoverage(t *testing.T) {
 	if !strings.Contains(out, "nle export") {
 		t.Fatalf("schema output missing nle export:\n%s", out)
 	}
+	if !strings.Contains(out, "provenance.schema.json") {
+		t.Fatalf("schema output missing provenance artifact schema:\n%s", out)
+	}
+}
+
+func TestAgentContextMentionsLocalIndexArtifacts(t *testing.T) {
+	out, errOut, code := runCLI(t, "agent-context", "--format", "json")
+	if code != 0 {
+		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+	}
+	for _, want := range []string{"reports/provenance.json", "~/.vflow/index.sqlite"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("agent context missing %q in:\n%s", want, out)
+		}
+	}
 }

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow provenance",
+  "type": "object",
+  "required": ["version", "project_id", "project_path", "index_database", "indexed_at", "counts", "artifact_paths"],
+  "properties": {
+    "version": {
+      "const": "vflow-provenance/v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "index_database": {
+      "type": "string",
+      "minLength": 1
+    },
+    "indexed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "counts": {
+      "type": "object",
+      "required": ["projects", "sources", "transcript_words", "artifacts", "provider_runs", "nle_events"],
+      "properties": {
+        "projects": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sources": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transcript_words": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifacts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provider_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nle_events": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

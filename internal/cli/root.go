@@ -16,6 +16,7 @@ import (
 	"github.com/nerveband/vflow/internal/contract"
 	verrors "github.com/nerveband/vflow/internal/errors"
 	vframing "github.com/nerveband/vflow/internal/framing"
+	vindex "github.com/nerveband/vflow/internal/index"
 	vjobs "github.com/nerveband/vflow/internal/jobs"
 	vmedia "github.com/nerveband/vflow/internal/media"
 	vnle "github.com/nerveband/vflow/internal/nle"
@@ -181,7 +182,7 @@ func agentContextCommand(opts *globalOptions) *cobra.Command {
 					"live":    []string{"gemini via GEMINI_API_KEY", "openai via OPENAI_API_KEY", "optional STT provider env vars"},
 				},
 				"nle_targets":       []string{"resolve", "fcpxml", "premiere", "otio", "edl", "mlt", "sidecar"},
-				"artifact_contract": []string{"project.json", "source-media-review.json", "transcript/words.json", "decisions/content-edl.json", "decisions/time-map.json", "timeline/compiled-timeline.json"},
+				"artifact_contract": []string{"project.json", "source-media-review.json", "transcript/words.json", "decisions/content-edl.json", "decisions/time-map.json", "timeline/compiled-timeline.json", "reports/provenance.json", "~/.vflow/index.sqlite"},
 			}
 			return writeOutput(cmd, opts, "agent-context", data)
 		},
@@ -575,6 +576,7 @@ func artifactSchemaNames() []string {
 		"gemini-video-qa.schema.json",
 		"color-grade-report.schema.json",
 		"nle-diff.schema.json",
+		"provenance.schema.json",
 		"render-report.schema.json",
 	}
 }
@@ -648,35 +650,75 @@ func projectListCommand(opts *globalOptions) *cobra.Command {
 }
 
 func projectIndexCommand(opts *globalOptions) *cobra.Command {
-	var root, outputPath string
+	var root, path, outputPath, indexPath string
 	cmd := &cobra.Command{
 		Use:   "index",
 		Short: "write a project index artifact",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if path == "" {
+				path = root
+			}
+			if _, err := os.Stat(filepath.Join(path, "project.json")); err == nil {
+				res, err := vindex.IndexProject(cmd.Context(), vindex.Options{ProjectPath: path, DBPath: indexPath, Commit: opts.Commit})
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_FAILED", err.Error(), "Check --path, --index, and project artifacts", false))
+				}
+				if outputPath != "" && opts.Commit {
+					raw, err := json.MarshalIndent(res, "", "  ")
+					if err != nil {
+						return err
+					}
+					if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+						return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_WRITE_FAILED", err.Error(), "Check output path permissions", false))
+					}
+					if err := os.WriteFile(outputPath, append(raw, '\n'), 0o644); err != nil {
+						return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_WRITE_FAILED", err.Error(), "Check output path permissions", false))
+					}
+				}
+				return writeOutput(cmd, opts, "project index", map[string]any{"status": res.Status, "output": filepath.ToSlash(outputPath), "index": res})
+			}
+
 			projects, err := findProjectContracts(root, opts.MaxDepth)
 			if err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_FAILED", err.Error(), "Check --root permissions", false))
 			}
-			if outputPath == "" {
-				outputPath = filepath.Join(root, "project-index.json")
+			results := []vindex.Result{}
+			for _, project := range projects {
+				valid, _ := project["valid"].(bool)
+				projectRoot, _ := project["root"].(string)
+				if !valid || projectRoot == "" {
+					continue
+				}
+				res, err := vindex.IndexProject(cmd.Context(), vindex.Options{ProjectPath: projectRoot, DBPath: indexPath, Commit: opts.Commit})
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_FAILED", err.Error(), "Check project artifacts", false))
+				}
+				results = append(results, res)
 			}
-			data := map[string]any{"version": "vflow-project-index/v1", "root": root, "count": len(projects), "projects": projects}
 			status := "planned"
 			if opts.Commit {
-				raw, err := json.MarshalIndent(data, "", "  ")
-				if err != nil {
-					return err
-				}
-				if err := os.WriteFile(outputPath, append(raw, '\n'), 0o644); err != nil {
-					return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_WRITE_FAILED", err.Error(), "Check output path permissions", false))
-				}
 				status = "written"
+				if outputPath != "" {
+					data := map[string]any{"version": vindex.ProjectIndexVersion, "root": root, "count": len(results), "projects": results}
+					raw, err := json.MarshalIndent(data, "", "  ")
+					if err != nil {
+						return err
+					}
+					if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+						return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_WRITE_FAILED", err.Error(), "Check output path permissions", false))
+					}
+					if err := os.WriteFile(outputPath, append(raw, '\n'), 0o644); err != nil {
+						return writeStructuredError(cmd, opts, verrors.External("PROJECT_INDEX_WRITE_FAILED", err.Error(), "Check output path permissions", false))
+					}
+				}
 			}
-			return writeOutput(cmd, opts, "project index", map[string]any{"status": status, "output": filepath.ToSlash(outputPath), "index": data})
+			return writeOutput(cmd, opts, "project index", map[string]any{"status": status, "output": filepath.ToSlash(outputPath), "count": len(results), "projects": results})
 		},
 	}
 	cmd.Flags().StringVar(&root, "root", ".", "search root")
+	cmd.Flags().StringVar(&path, "path", "", "single project path to index")
 	cmd.Flags().StringVar(&outputPath, "output", "", "index output path")
+	cmd.Flags().StringVar(&indexPath, "index", "", "SQLite index path, default $VFLOW_INDEX_PATH or ~/.vflow/index.sqlite")
 	return cmd
 }
 
@@ -2094,13 +2136,23 @@ func transcriptBakeoffCommand(opts *globalOptions) *cobra.Command {
 }
 
 func transcriptSearchCommand(opts *globalOptions) *cobra.Command {
-	var projectPath, query string
+	var projectPath, query, dataSource, indexPath string
 	cmd := &cobra.Command{
 		Use:   "search",
 		Short: "search canonical transcript words",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if query == "" {
 				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_QUERY", "missing --query", "Pass --query text", false))
+			}
+			if dataSource == "local" || dataSource == "index" {
+				result, err := vindex.SearchTranscripts(cmd.Context(), vindex.SearchOptions{ProjectPath: projectPath, DBPath: indexPath, Query: query, Limit: opts.Limit})
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_INDEX_SEARCH_FAILED", err.Error(), "Run vflow project index --path <project> --commit first", false))
+				}
+				return writeOutput(cmd, opts, "transcript search", result)
+			}
+			if dataSource != "" && dataSource != "project" && dataSource != "canonical" {
+				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported data source", "Use one of: project, canonical, local", false))
 			}
 			words, err := vtranscript.ReadWords(projectPath)
 			if err != nil {
@@ -2116,11 +2168,13 @@ func transcriptSearchCommand(opts *globalOptions) *cobra.Command {
 					}
 				}
 			}
-			return writeOutput(cmd, opts, "transcript search", map[string]any{"query": query, "count": len(matches), "matches": matches})
+			return writeOutput(cmd, opts, "transcript search", map[string]any{"query": query, "data_source": "project", "count": len(matches), "matches": matches})
 		},
 	}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&query, "query", "", "search query")
+	cmd.Flags().StringVar(&dataSource, "data-source", "project", "search data source: project, canonical, local")
+	cmd.Flags().StringVar(&indexPath, "index", "", "SQLite index path, default $VFLOW_INDEX_PATH or ~/.vflow/index.sqlite")
 	return cmd
 }
 

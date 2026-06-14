@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -21,5 +22,34 @@ func TestProjectInitCreatesExpectedLayout(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
 			t.Fatalf("expected %s: %v", rel, err)
 		}
+	}
+}
+
+func TestProjectIndexWritesSQLiteAndProvenance(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VFLOW_INDEX_PATH", filepath.Join(t.TempDir(), "index.sqlite"))
+	if _, _, code := runCLI(t, "project", "init", "--path", dir, "--id", "index_cli", "--commit", "--format", "json"); code != 0 {
+		t.Fatalf("project init failed")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript", "input.txt"), []byte("Ali: sadaqa zakat waqf\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, errOut, code := runCLI(t, "transcript", "import", "--project", dir, "--provider", "plain-text", "--input", filepath.Join(dir, "transcript", "input.txt"), "--commit", "--format", "json")
+	if code != 0 {
+		t.Fatalf("transcript import failed: %s", errOut)
+	}
+
+	out, errOut, code := runCLI(t, "project", "index", "--path", dir, "--commit", "--format", "json")
+	if code != 0 {
+		t.Fatalf("project index failed: code=%d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"database_path":`) || !strings.Contains(out, `"provenance_path":`) {
+		t.Fatalf("index output missing sqlite/provenance paths: %s", out)
+	}
+	if _, err := os.Stat(os.Getenv("VFLOW_INDEX_PATH")); err != nil {
+		t.Fatalf("expected sqlite index: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "reports", "provenance.json")); err != nil {
+		t.Fatalf("expected provenance artifact: %v", err)
 	}
 }
