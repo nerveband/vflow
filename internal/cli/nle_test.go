@@ -106,6 +106,42 @@ func TestNLEApplyCommitWritesAppliedChangesArtifact(t *testing.T) {
 	}
 }
 
+func TestNLEAcceptThenApplyMergesAcceptedNeedsReview(t *testing.T) {
+	project := t.TempDir()
+	input := filepath.Join(project, "review-import.json")
+	raw := []byte(`{
+  "version": "vflow-nle-import/v1",
+  "status": "parsed",
+  "input": "timeline.fcpxml",
+  "format": "fcpxml",
+  "bytes": 123,
+  "changes": [
+    {"id":"change_safe","type":"clip_trim","segment_id":"seg_A","description":"clip timing changed","confidence":0.9},
+    {"id":"change_review","type":"title_card","segment_id":"seg_A","description":"title changed","confidence":0.85}
+  ]
+}`)
+	if err := os.WriteFile(input, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	acceptedPath := filepath.Join(project, "imports", "accepted-nle-changes.json")
+	out, errOut, code := runCLI(t, "nle", "accept", "--project", project, "--import", input, "--all-needs-review", "--reviewer", "operator", "--output", acceptedPath, "--commit", "--format", "json")
+	if code != 0 {
+		t.Fatalf("nle accept failed: code=%d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"accepted_needs_review"`) || !strings.Contains(out, `"change_review"`) {
+		t.Fatalf("accept output missing reviewed change: %s", out)
+	}
+
+	out, errOut, code = runCLI(t, "nle", "apply", "--project", project, "--input", acceptedPath, "--commit", "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("nle apply accepted failed: code=%d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"status": "applied"`) || !strings.Contains(out, `"title_card"`) {
+		t.Fatalf("apply output missing accepted needs-review change: %s", out)
+	}
+}
+
 func TestNLEDiffCanReadRawTimelineInput(t *testing.T) {
 	project := t.TempDir()
 	input := filepath.Join(project, "timeline.fcpxml")

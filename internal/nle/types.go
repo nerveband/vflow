@@ -67,6 +67,21 @@ type DiffResult struct {
 	Unclassified []Change `json:"unclassified"`
 }
 
+type AcceptedReview struct {
+	Version             string   `json:"version"`
+	Status              string   `json:"status"`
+	Source              string   `json:"source"`
+	Format              string   `json:"format"`
+	Reviewer            string   `json:"reviewer,omitempty"`
+	Notes               string   `json:"notes,omitempty"`
+	SafeMerge           []Change `json:"safe_merge"`
+	AcceptedNeedsReview []Change `json:"accepted_needs_review"`
+	RejectedNeedsReview []Change `json:"rejected_needs_review"`
+	Blocked             []Change `json:"blocked"`
+	Unclassified        []Change `json:"unclassified"`
+	Artifact            string   `json:"artifact,omitempty"`
+}
+
 type ApplyPlan struct {
 	Version     string   `json:"version"`
 	Status      string   `json:"status"`

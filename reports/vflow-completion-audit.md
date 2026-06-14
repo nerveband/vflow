@@ -33,15 +33,15 @@ This audit checks the active goal against current repo state and command output.
 - NLE exporters now emit structured EDL, FCPXML/Resolve, Premiere XMEML, MLT, and OTIO text plus sidecars with roundtrip segment metadata.
 - `nle import` writes neutral `imports/nle-import.json`; `nle diff` classifies safe/review/blocked/unclassified buckets and can write an HTML roundtrip review.
 - `nle apply --commit` refuses blocked or unreviewed changes and writes `imports/applied-nle-changes.json` for safe changes.
+- `nle accept --commit` writes an explicit accepted-review artifact; `nle apply --commit` can merge accepted needs-review changes from that artifact.
 - `color review` writes `reports/color-grade-report.json` without requiring Gemini.
 - `project index --path` writes a SQLite/FTS index via `modernc.org/sqlite` and project `reports/provenance.json`; `transcript search --data-source local` returns FTS transcript hits with project IDs and frame ranges.
-- `upgrade` checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage release assets; the public repo currently has no release.
+- `upgrade` checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage release assets; GoReleaser config and a tag-triggered release workflow are present.
 - `audit cli` now runs a weighted evidence scorecard from `internal/audit` instead of returning a hardcoded scaffold score.
 
 ## Not Yet Fully Proven
 
 - NLE roundtrip support is structured and tested for representative artifacts, but it is not yet exhaustively proven against real exported projects from every target editor.
-- Accepted-review artifact semantics for needs-review NLE changes are not yet implemented beyond blocking unsafe commit.
 - Live Gemini QA/color cannot complete until the expired runtime key is rotated.
 - Live ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia provider calls cannot be proven until those runtime keys are supplied.
 - `vflow upgrade --commit` cannot stage a real public asset until a GitHub release with GoReleaser artifacts and checksums is published.

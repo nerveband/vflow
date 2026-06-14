@@ -22,9 +22,10 @@ Date: 2026-06-14
 - Gemini QA now supports the Files API resumable upload path and `qa analyze --upload files`.
 - NLE export/import/diff/apply surfaces for FCPXML, EDL, OTIO, MLT, Resolve alias, Premiere XMEML, and sidecars, with roundtrip segment metadata.
 - NLE import parses supported raw timelines into neutral change records, diff classifies safe/review/blocked buckets, and guarded apply writes `imports/applied-nle-changes.json` only when changes are safe to commit.
+- `nle accept` writes `imports/accepted-nle-changes.json` artifacts so needs-review changes can be applied only after explicit review acceptance.
 - Cleanup review and NLE diff can deliver HTML review artifacts.
 - Color review writes `reports/color-grade-report.json` without requiring live Gemini, and live Gemini can enrich it when credentials work.
-- Public-repo support files: `AGENTS.md`, root `SKILL.md`, bundled workflow skill, schemas, CI, GoReleaser config, install script, and research notes.
+- Public-repo support files: `AGENTS.md`, root `SKILL.md`, bundled workflow skill, schemas, CI, release workflow, GoReleaser config, install script, and research notes.
 - `upgrade` now checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage a release asset into a cache with `--commit`.
 - `audit cli` is backed by `internal/audit` evidence checks instead of a hardcoded score.
 
@@ -44,7 +45,7 @@ Current results:
 - `go test ./...` passed.
 - `make test` passed.
 - `make lint` / `go vet ./...` passed.
-- `schema --validate` returned `status: valid` and `command_count: 53`.
+- `schema --validate` returned `status: valid` and `command_count: 54`.
 - `doctor` found `ffmpeg`, `ffprobe`, and `python3`; `OPENAI_API_KEY` and `GEMINI_API_KEY` were present, all other optional provider env vars were absent.
 - `audit cli` returned score `100` with pass threshold `85`.
 
@@ -73,7 +74,7 @@ Results:
 
 - `go test ./...` passed across all packages.
 - `go vet ./...` passed.
-- `schema --validate` returned `status: valid` and `command_count: 53`.
+- `schema --validate` returned `status: valid` and `command_count: 54`.
 - `doctor` found `ffmpeg`, `ffprobe`, and `python3`; `OPENAI_API_KEY` and `GEMINI_API_KEY` were present, all other optional provider env vars were absent.
 - `audit cli` returned `score: 100`, `threshold: 85`, `status: pass`.
 - `upgrade` reached the public GitHub repo metadata and reported `status: no_release` because no release has been published yet.
@@ -252,7 +253,6 @@ Hardening pass note: the latest run only repeated `media probe --commit` and `tr
 ## Remaining Work
 
 - Broaden NLE writer/parser fixtures against real Resolve, Final Cut Pro, Premiere, Shotcut/MLT, and OTIO roundtrips; current coverage is structured and tested but not exhaustive for every editor feature.
-- Add accepted-review artifact semantics for needs-review NLE changes before canonical timeline mutation.
 - Run live ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia calls after those runtime keys are supplied.
 - Rotate/renew the expired Gemini key, then rerun live `qa doctor`, `qa analyze --upload files`, and `color review`.
 - Publish a GitHub release with GoReleaser artifacts and checksums so `vflow upgrade --commit` can stage a real public release asset.

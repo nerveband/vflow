@@ -94,6 +94,7 @@ func DefaultRegistry() *Registry {
 		{"nle export", false, true, "nle"},
 		{"nle import", false, true, "nle"},
 		{"nle diff", true, false, "nle"},
+		{"nle accept", false, true, "nle"},
 		{"nle apply", false, true, "nle"},
 		{"jobs list", true, false, "jobs"},
 		{"jobs get", true, false, "jobs"},
