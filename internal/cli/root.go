@@ -1747,23 +1747,20 @@ func nleImportCommand(opts *globalOptions) *cobra.Command {
 		if err != nil {
 			return writeStructuredError(cmd, opts, verrors.External("NLE_IMPORT_READ_FAILED", err.Error(), "Check --input path", false))
 		}
-		data := map[string]any{
-			"version": "vflow-nle-import/v1",
-			"status":  "parsed",
-			"input":   filepath.ToSlash(input),
-			"bytes":   len(raw),
-			"changes": []any{},
+		data, err := vnle.ParseImport(input, raw)
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.Validation("NLE_IMPORT_PARSE_FAILED", err.Error(), "Use a supported EDL, FCPXML, XMEML, MLT, or OTIO file", false))
 		}
 		if opts.Commit {
 			path := filepath.Join(projectPath, "imports", "nle-import.json")
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("NLE_IMPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
 			}
+			data.Artifact = filepath.ToSlash(path)
 			out, _ := json.MarshalIndent(data, "", "  ")
 			if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("NLE_IMPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
 			}
-			data["artifact"] = filepath.ToSlash(path)
 		}
 		return writeOutput(cmd, opts, "nle import", data)
 	}}
@@ -1775,15 +1772,21 @@ func nleImportCommand(opts *globalOptions) *cobra.Command {
 func nleDiffCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, input, deliver string
 	cmd := &cobra.Command{Use: "diff", Short: "classify NLE roundtrip diff", RunE: func(cmd *cobra.Command, args []string) error {
-		data := map[string]any{"status": "classified", "import": input, "safe_merge": []any{}, "needs_review": []any{}, "blocked": []any{}}
+		if input == "" {
+			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --import", "Pass --import timeline or nle-import.json", false))
+		}
+		importResult, err := loadNLEImport(projectPath, input)
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.Validation("NLE_DIFF_PARSE_FAILED", err.Error(), "Use a supported import artifact or raw timeline file", false))
+		}
+		data := vnle.Classify(importResult)
 		if strings.HasPrefix(deliver, "file:") {
 			path := strings.TrimPrefix(deliver, "file:")
 			if err := writeRoundtripReviewHTML(path, data); err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("NLE_DIFF_REVIEW_WRITE_FAILED", err.Error(), "Check --deliver path", false))
 			}
-			data["artifact"] = filepath.ToSlash(path)
+			data.Artifact = filepath.ToSlash(path)
 		}
-		_ = projectPath
 		return writeOutput(cmd, opts, "nle diff", data)
 	}}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
@@ -1792,15 +1795,73 @@ func nleDiffCommand(opts *globalOptions) *cobra.Command {
 	return cmd
 }
 
-func writeRoundtripReviewHTML(path string, data map[string]any) error {
+func loadNLEImport(projectPath, input string) (vnle.ImportResult, error) {
+	path := input
+	if !filepath.IsAbs(path) {
+		projectRelative := filepath.Join(projectPath, input)
+		if _, err := os.Stat(projectRelative); err == nil {
+			path = projectRelative
+		}
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return vnle.ImportResult{}, err
+	}
+	var parsed vnle.ImportResult
+	if err := json.Unmarshal(raw, &parsed); err == nil && parsed.Version == "vflow-nle-import/v1" {
+		if parsed.Input == "" {
+			parsed.Input = filepath.ToSlash(path)
+		}
+		return parsed, nil
+	}
+	return vnle.ParseImport(path, raw)
+}
+
+func loadNLEDiff(projectPath, input string) (vnle.DiffResult, error) {
+	path := input
+	if !filepath.IsAbs(path) {
+		projectRelative := filepath.Join(projectPath, input)
+		if _, err := os.Stat(projectRelative); err == nil {
+			path = projectRelative
+		}
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return vnle.DiffResult{}, err
+	}
+	var diff vnle.DiffResult
+	if err := json.Unmarshal(raw, &diff); err == nil && diff.Version == "vflow-nle-diff/v1" {
+		return diff, nil
+	}
+	var parsed vnle.ImportResult
+	if err := json.Unmarshal(raw, &parsed); err == nil && parsed.Version == "vflow-nle-import/v1" {
+		return vnle.Classify(parsed), nil
+	}
+	importResult, err := vnle.ParseImport(path, raw)
+	if err != nil {
+		return vnle.DiffResult{}, err
+	}
+	return vnle.Classify(importResult), nil
+}
+
+func writeRoundtripReviewHTML(path string, data vnle.DiffResult) error {
 	var b strings.Builder
 	b.WriteString("<!doctype html><meta charset=\"utf-8\"><title>vflow roundtrip review</title><main>")
 	b.WriteString("<h1>Roundtrip Review</h1>")
-	for _, section := range []string{"safe_merge", "needs_review", "blocked"} {
+	sections := []struct {
+		name    string
+		changes []vnle.Change
+	}{
+		{name: "safe_merge", changes: data.SafeMerge},
+		{name: "needs_review", changes: data.NeedsReview},
+		{name: "blocked", changes: data.Blocked},
+		{name: "unclassified", changes: data.Unclassified},
+	}
+	for _, section := range sections {
 		b.WriteString("<section><h2>")
-		b.WriteString(section)
+		b.WriteString(section.name)
 		b.WriteString("</h2><pre>")
-		raw, _ := json.MarshalIndent(data[section], "", "  ")
+		raw, _ := json.MarshalIndent(section.changes, "", "  ")
 		b.Write(raw)
 		b.WriteString("</pre></section>")
 	}
@@ -1812,14 +1873,38 @@ func writeRoundtripReviewHTML(path string, data map[string]any) error {
 }
 
 func nleApplyCommand(opts *globalOptions) *cobra.Command {
-	var input string
+	var projectPath, input string
 	cmd := &cobra.Command{Use: "apply", Short: "apply accepted NLE changes", RunE: func(cmd *cobra.Command, args []string) error {
-		status := "planned"
-		if opts.Commit {
-			status = "applied"
+		if input == "" {
+			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass --input accepted changes, nle-diff.json, or nle-import.json", false))
 		}
-		return writeOutput(cmd, opts, "nle apply", map[string]any{"status": status, "input": input})
+		diff, err := loadNLEDiff(projectPath, input)
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.Validation("NLE_APPLY_PARSE_FAILED", err.Error(), "Use a supported accepted changes artifact", false))
+		}
+		plan := vnle.PlanApply(diff, false)
+		if opts.Commit {
+			switch plan.Status {
+			case "blocked":
+				return writeStructuredError(cmd, opts, verrors.Safety("blocked NLE changes cannot be applied", "Run nle diff, remove blocked changes, and provide an accepted changes artifact"))
+			case "needs_review":
+				return writeStructuredError(cmd, opts, verrors.Safety("NLE changes need accepted review before apply", "Accept reviewed changes explicitly before --commit"))
+			default:
+				plan.Status = "applied"
+				path := filepath.Join(projectPath, "imports", "applied-nle-changes.json")
+				plan.Artifact = filepath.ToSlash(path)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("NLE_APPLY_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				raw, _ := json.MarshalIndent(plan, "", "  ")
+				if err := os.WriteFile(path, append(raw, '\n'), 0o644); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("NLE_APPLY_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+			}
+		}
+		return writeOutput(cmd, opts, "nle apply", map[string]any{"input": filepath.ToSlash(input), "plan": plan})
 	}}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&input, "input", "", "accepted changes artifact")
 	return cmd
 }

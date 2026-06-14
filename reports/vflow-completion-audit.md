@@ -27,13 +27,15 @@ This audit checks the active goal against current repo state and command output.
 - Artifact `file:` delivery is atomic and rejects existing files unless `--overwrite --commit` is used.
 - `render verify` can parse ffprobe JSON and report duration, resolution, codec, audio stream count, and frame count.
 - `cleanup review` can write an HTML review artifact.
-- `nle import` writes `imports/nle-import.json`; `nle diff` can write an HTML roundtrip review.
+- NLE exporters now emit structured EDL, FCPXML/Resolve, Premiere XMEML, MLT, and OTIO text plus sidecars with roundtrip segment metadata.
+- `nle import` writes neutral `imports/nle-import.json`; `nle diff` classifies safe/review/blocked/unclassified buckets and can write an HTML roundtrip review.
+- `nle apply --commit` refuses blocked or unreviewed changes and writes `imports/applied-nle-changes.json` for safe changes.
 - `color review` writes `reports/color-grade-report.json` without requiring Gemini.
 
 ## Not Yet Fully Proven
 
-- NLE exporters are still minimal text bodies plus sidecars; richer format-specific XML/EDL/OTIO/MLT semantics remain incomplete.
-- NLE import/diff classification is still shallow; it does not yet classify all safe/needs-review/blocked changes from real edited timelines.
+- NLE roundtrip support is structured and tested for representative artifacts, but it is not yet exhaustively proven against real exported projects from every target editor.
+- Accepted-review artifact semantics for needs-review NLE changes are not yet implemented beyond blocking unsafe commit.
 - Gemini Files API upload path for large videos is not implemented; current path is inline video and live use is blocked until the expired key is rotated.
 - ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia live STT adapters are not implemented beyond readiness/config metadata.
 - SQLite/FTS indexing from the written plan is not implemented.

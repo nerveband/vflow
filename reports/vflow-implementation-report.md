@@ -14,7 +14,8 @@ Date: 2026-06-14
 - Render verification parses ffprobe JSON/evidence for duration, resolution, codec, audio streams, and frame count.
 - Live OpenAI STT adapter using `OPENAI_API_KEY` and `/v1/audio/transcriptions`; secrets are env-only.
 - Gemini QA/color hooks using `GEMINI_API_KEY`, `GOOGLE_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` with `x-goog-api-key`; provider errors are compact and redacted.
-- NLE export/import/diff/apply surfaces for FCPXML, EDL, OTIO, MLT, Resolve alias, Premiere alias, and sidecars.
+- NLE export/import/diff/apply surfaces for FCPXML, EDL, OTIO, MLT, Resolve alias, Premiere XMEML, and sidecars, with roundtrip segment metadata.
+- NLE import parses supported raw timelines into neutral change records, diff classifies safe/review/blocked buckets, and guarded apply writes `imports/applied-nle-changes.json` only when changes are safe to commit.
 - Cleanup review and NLE diff can deliver HTML review artifacts.
 - Color review writes `reports/color-grade-report.json` without requiring live Gemini, and live Gemini can enrich it when credentials work.
 - Public-repo support files: `AGENTS.md`, root `SKILL.md`, bundled workflow skill, schemas, CI, GoReleaser config, install script, and research notes.
@@ -59,6 +60,7 @@ go run ./cmd/vflow artifacts deliver --input tmp/continuation-proof/project/repo
 go run ./cmd/vflow cleanup review --project tmp/continuation-proof/project --deliver file:tmp/continuation-proof/project/review/cleanup-review.html --commit --format json
 go run ./cmd/vflow nle import --project tmp/continuation-proof/project --input tmp/continuation-proof/project/timeline.fcpxml --commit --format json
 go run ./cmd/vflow nle diff --project tmp/continuation-proof/project --import tmp/continuation-proof/project/imports/nle-import.json --deliver file:tmp/continuation-proof/project/review/roundtrip-review.html --format json
+go run ./cmd/vflow nle diff --project fixtures/project/basic --import fixtures/nle/roundtrip.fcpxml --format json
 go run ./cmd/vflow color review --project tmp/continuation-proof/project --input tmp/continuation-proof/project/renders/rough-preview.mp4 --commit --format json
 ```
 
@@ -69,6 +71,7 @@ Results:
 - Artifact delivery wrote with `status: delivered`.
 - Cleanup review wrote `review/cleanup-review.html`.
 - NLE import wrote `imports/nle-import.json`; NLE diff wrote `review/roundtrip-review.html`.
+- Fixture NLE diff classified `clip_trim`, `marker_note`, and `audio_level` as safe, `crop_change` and `title_card` as needs-review, `color_grade` as blocked, and `unclassified: []`.
 - Color review wrote `reports/color-grade-report.json`.
 
 ## Synthetic Live Proof
@@ -124,10 +127,12 @@ for target in fcpxml edl otio mlt resolve premiere sidecar; do
 done
 go run ./cmd/vflow nle import --input tmp/live-demo/exports/timeline.fcpxml --format json
 go run ./cmd/vflow nle diff --import tmp/live-demo/exports/timeline.fcpxml --format json
-go run ./cmd/vflow nle apply --input tmp/live-demo/exports/sidecars/fcpxml-vflow-sidecar.json --commit --format json
+go run ./cmd/vflow nle import --project tmp/live-demo --input tmp/live-demo/exports/timeline.fcpxml --commit --format json
+go run ./cmd/vflow nle diff --project tmp/live-demo --import tmp/live-demo/imports/nle-import.json --format json
+go run ./cmd/vflow nle apply --project tmp/live-demo --input tmp/live-demo/imports/nle-import.json --commit --format json
 ```
 
-NLE proof result: all seven exports wrote sidecars with two compiled segments.
+NLE proof result: all seven exports wrote sidecars with two compiled segments; FCPXML import/diff/apply parsed and applied safe roundtrip changes.
 
 ## Live Gemini Result
 
@@ -161,7 +166,9 @@ go run ./cmd/vflow render preview --project work/test-projects/cair-ga-10yr-exec
 go run ./cmd/vflow render verify --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/rough-preview.mp4 --format json
 go run ./cmd/vflow color apply --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/rough-preview.mp4 --lut fixtures/color/basic.cube --deliver file:work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/rough-preview-graded.mp4 --commit --format json
 go run ./cmd/vflow nle export --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --target fcpxml --deliver file:work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/exports/timeline.fcpxml --commit --format json
-go run ./cmd/vflow nle diff --import work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/exports/timeline.fcpxml --format json
+go run ./cmd/vflow nle import --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/exports/timeline.fcpxml --commit --format json
+go run ./cmd/vflow nle diff --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --import work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/imports/nle-import.json --deliver file:work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/review/roundtrip-review.html --format json
+go run ./cmd/vflow nle apply --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/imports/nle-import.json --commit --format json --format-error json
 ```
 
 Fixture proof:
@@ -172,10 +179,14 @@ Fixture proof:
 - Preview render verified as H.264, 1920x1080, 1.001000 seconds.
 - LUT render wrote `renders/rough-preview-graded.mp4`.
 - FCPXML export wrote one-segment sidecar.
+- FCPXML import wrote `imports/nle-import.json` with `clip_trim` and `marker_note`.
+- NLE diff wrote `review/roundtrip-review.html` with two `safe_merge` changes and no needs-review, blocked, or unclassified changes.
+- Guarded NLE apply wrote `imports/applied-nle-changes.json`.
 
 ## Remaining Work
 
-- Replace minimal NLE text bodies with richer format-specific timeline XML/OTIO/EDL/MLT writers and stronger import parsing.
+- Broaden NLE writer/parser fixtures against real Resolve, Final Cut Pro, Premiere, Shotcut/MLT, and OTIO roundtrips; current coverage is structured and tested but not exhaustive for every editor feature.
+- Add accepted-review artifact semantics for needs-review NLE changes before canonical timeline mutation.
 - Add live adapters for ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia once runtime keys are available.
 - Add Gemini Files API upload path for large videos after rotating the expired key.
 - Add SQLite/FTS project indexing if the plan remains strict on that storage backend.
