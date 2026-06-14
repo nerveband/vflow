@@ -19,7 +19,7 @@ Date: 2026-06-14
 - Live STT adapters for OpenAI, ElevenLabs, Deepgram, AssemblyAI, Gladia, and Soniox with provider sidecars and canonical frame-word normalization.
 - Transcript bakeoff can run live providers with `--live --commit`, records completed/skipped/failed provider status, and writes `reports/provider-bakeoff.json`.
 - Gemini QA/color hooks using `GEMINI_API_KEY`, `GOOGLE_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` with `x-goog-api-key`; provider errors are compact and redacted.
-- Gemini QA now supports the Files API resumable upload path and `qa analyze --upload files`.
+- Gemini QA now supports the Files API resumable upload path, polls uploaded files until `ACTIVE`, and sanitizes transient `thoughtSignature` payloads from CLI/report JSON.
 - NLE export/import/diff/apply surfaces for FCPXML, EDL, OTIO, MLT, Resolve alias, Premiere XMEML, and sidecars, with roundtrip segment metadata.
 - NLE import parses supported raw timelines into neutral change records, diff classifies safe/review/blocked buckets, and guarded apply writes `imports/applied-nle-changes.json` only when changes are safe to commit.
 - `nle accept` writes `imports/accepted-nle-changes.json` artifacts so needs-review changes can be applied only after explicit review acceptance.
@@ -47,7 +47,7 @@ Current results:
 - `make test` passed.
 - `make lint` / `go vet ./...` passed.
 - `schema --validate` returned `status: valid` and `command_count: 54`.
-- `doctor` found `ffmpeg`, `ffprobe`, and `python3`; `OPENAI_API_KEY` and `GEMINI_API_KEY` were present, all other optional provider env vars were absent.
+- `doctor` found `ffmpeg`, `ffprobe`, and `python3`.
 - `audit cli` returned score `100` with pass threshold `85`.
 
 Continuation verification also passed:
@@ -65,6 +65,8 @@ Hardening verification on 2026-06-14:
 ```bash
 go test ./...
 go vet ./...
+source ~/.config/vflow/secrets.zsh
+go run ./cmd/vflow auth doctor --format json --format-error json
 go run ./cmd/vflow schema --validate --format json
 go run ./cmd/vflow doctor --format json
 go run ./cmd/vflow audit cli --format json
@@ -75,8 +77,9 @@ Results:
 
 - `go test ./...` passed across all packages.
 - `go vet ./...` passed.
+- `auth doctor` returned redacted `env_present: true` for `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`, `SONIOX_API_KEY`, `ASSEMBLYAI_API_KEY`, `DEEPGRAM_API_KEY`, `GLADIA_API_KEY`, `GEMINI_API_KEY`, `HF_TOKEN`, and `ANTHROPIC_API_KEY`.
 - `schema --validate` returned `status: valid` and `command_count: 54`.
-- `doctor` found `ffmpeg`, `ffprobe`, and `python3`; `OPENAI_API_KEY` and `GEMINI_API_KEY` were present, all other optional provider env vars were absent.
+- `doctor` found `ffmpeg`, `ffprobe`, and `python3`.
 - `audit cli` returned `score: 100`, `threshold: 85`, `status: pass`.
 - Release workflow published `v0.1.1`; `upgrade --commit` staged `vflow_0.1.1_darwin_arm64.tar.gz` from the public release into `tmp/upgrade-proof`.
 
@@ -169,30 +172,43 @@ NLE proof result: all seven exports wrote sidecars with two compiled segments; F
 
 ## Live Gemini Result
 
-Live Gemini calls were attempted with the runtime env key, including the new Files API upload path:
+Live Gemini calls completed with the runtime env key, including the Files API upload path:
 
 ```bash
-go run ./cmd/vflow qa doctor --provider gemini --live --commit --format json --format-error json
-go run ./cmd/vflow qa analyze --project work/live-smoke/gemini-qa --render work/live-smoke/gemini-qa/renders/rough-preview.mp4 --provider gemini --model gemini-3.5-flash --upload files --live --commit --timeout 3m --format json --format-error json
-go run ./cmd/vflow color review --input tmp/live-demo/renders/rough-preview-graded.mp4 --provider gemini --live --commit --format json --format-error json
-```
-
-Provider result: Google returned `400 Bad Request` with `API key expired. Please renew the API key.` The CLI surfaced this as structured `QA_DOCTOR_FAILED`, `GEMINI_QA_FAILED`, and `COLOR_REVIEW_FAILED` errors without printing the raw key.
-
-## Live STT Provider Result
-
-Live OpenAI STT and provider bakeoff were run against a tiny copied fixture under ignored `work/live-smoke/`:
-
-```bash
-go run ./cmd/vflow transcript create --project work/live-smoke/openai-stt --provider openai --source work/live-smoke/openai-stt/media/source.mp4 --live --commit --timeout 3m --format json --format-error json
-go run ./cmd/vflow transcript bakeoff --project work/live-smoke/openai-stt --source work/live-smoke/openai-stt/media/source.mp4 --providers openai,elevenlabs,soniox,assemblyai,deepgram,gladia,local --live --commit --timeout 3m --format json --format-error json
+source ~/.config/vflow/secrets.zsh
+go run ./cmd/vflow qa doctor --provider gemini --model gemini-3.5-flash --live --commit --timeout 3m --format json --format-error json
+go run ./cmd/vflow qa analyze --project work/live-provider-proof/gemini --render work/live-provider-proof/gemini/renders/rough-preview.mp4 --provider gemini --model gemini-3.5-flash --upload files --live --commit --timeout 5m --format json --format-error json
+go run ./cmd/vflow color review --project work/live-provider-proof/gemini --input work/live-provider-proof/gemini/renders/rough-preview.mp4 --provider gemini --model gemini-3.5-flash --live --commit --timeout 5m --format json --format-error json
 ```
 
 Results:
 
-- OpenAI STT completed and wrote `work/live-smoke/openai-stt/transcript/words.json` plus `work/live-smoke/openai-stt/transcript/openai-transcription.json`.
-- Live bakeoff completed OpenAI with `model: gpt-4o-transcribe`; ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia were marked `skipped_missing_key` because those runtime env vars were absent.
-- Bakeoff wrote `work/live-smoke/openai-stt/reports/provider-bakeoff.json`.
+- `qa doctor` returned `ok: true`, selected `gemini-3.5-flash`, confirmed the model was available, and listed 50 available models.
+- `qa analyze --upload files` uploaded `work/live-provider-proof/gemini/renders/rough-preview.mp4`, polled the uploaded file to `ACTIVE`, wrote `work/live-provider-proof/gemini/reports/gemini-video-qa.json`, and returned one candidate.
+- `color review` wrote `work/live-provider-proof/gemini/reports/color-grade-report.json` with one Gemini candidate.
+- Both committed Gemini reports were sanitized; `thoughtSignature` was absent from the saved JSON.
+
+## Live STT Provider Result
+
+Live provider bakeoff was run against a synthetic speech fixture under ignored `work/live-provider-proof/`:
+
+```bash
+source ~/.config/vflow/secrets.zsh
+say -o work/live-provider-proof/speech/media/vflow-speech.aiff "Hello from vflow. This is a live speech recognition provider test."
+ffmpeg -y -hide_banner -loglevel error -i work/live-provider-proof/speech/media/vflow-speech.aiff -ar 16000 -ac 1 -c:a pcm_s16le work/live-provider-proof/speech/media/vflow-speech.wav
+go run ./cmd/vflow transcript bakeoff --project work/live-provider-proof/speech --source work/live-provider-proof/speech/media/vflow-speech.wav --providers openai,elevenlabs,soniox,assemblyai,deepgram,gladia,local --live --commit --timeout 20m --format json --format-error json
+```
+
+Results:
+
+- OpenAI completed with `model: gpt-4o-transcribe`, `word_count: 11`.
+- ElevenLabs completed with `model: scribe_v2`, `word_count: 11`.
+- Soniox completed with `model: stt-async-v5`, `word_count: 20`, job `03e86368-d235-4ed7-a9dc-183f50c76baf`.
+- AssemblyAI completed with `model: default`, `word_count: 11`, job `65243956-f111-4aaf-b7aa-773c3d8d9420`.
+- Deepgram completed with `model: nova-3`, `word_count: 11`, job `019ec7b6-ffdd-74a0-9e2d-805867f14050`.
+- Gladia completed with `model: pre-recorded-v2`, `word_count: 22`, job `49ebb28a-1beb-4408-b0ea-3d0672ae8f14`.
+- Local remained `local_import_only`.
+- Bakeoff wrote `work/live-provider-proof/speech/reports/provider-bakeoff.json`.
 
 ## Live Media Commit Result
 
@@ -275,5 +291,3 @@ Hardening pass note: the latest run only repeated `media probe --commit` and `tr
 ## Remaining Work
 
 - Broaden NLE writer/parser fixtures against real Resolve, Final Cut Pro, Premiere, Shotcut/MLT, and OTIO roundtrips; current coverage is structured and tested but not exhaustive for every editor feature.
-- Run live ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia calls after those runtime keys are supplied.
-- Rotate/renew the expired Gemini key, then rerun live `qa doctor`, `qa analyze --upload files`, and `color review`.

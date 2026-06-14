@@ -27,6 +27,7 @@ var (
 	geminiModelsURL       = "https://generativelanguage.googleapis.com/v1beta/models"
 	geminiGenerateBaseURL = "https://generativelanguage.googleapis.com/v1beta/models"
 	geminiUploadURL       = "https://generativelanguage.googleapis.com/upload/v1beta/files"
+	geminiFileBaseURL     = "https://generativelanguage.googleapis.com/v1beta"
 )
 
 type DoctorResult struct {
@@ -276,6 +277,10 @@ func AnalyzeFileVideo(apiKey, model, videoPath, prompt string) (string, Uploaded
 	if err != nil {
 		return "", UploadedFile{}, err
 	}
+	uploaded, err = WaitForFileActive(apiKey, uploaded, 3*time.Minute, 2*time.Second)
+	if err != nil {
+		return "", UploadedFile{}, err
+	}
 	body := map[string]any{
 		"contents": []map[string]any{{
 			"parts": []map[string]any{
@@ -302,6 +307,100 @@ func AnalyzeFileVideo(apiKey, model, videoPath, prompt string) (string, Uploaded
 		return "", UploadedFile{}, fmt.Errorf("Gemini generateContent returned %s: %s", resp.Status, compactProviderBody(out))
 	}
 	return string(out), uploaded, nil
+}
+
+func WaitForFileActive(apiKey string, file UploadedFile, timeout, interval time.Duration) (UploadedFile, error) {
+	if file.State == "ACTIVE" || file.Name == "" {
+		return file, nil
+	}
+	if timeout <= 0 {
+		timeout = 3 * time.Minute
+	}
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		latest, err := getUploadedFile(apiKey, file.Name)
+		if err != nil {
+			return file, err
+		}
+		if latest.URI == "" {
+			latest.URI = file.URI
+		}
+		if latest.MIMEType == "" {
+			latest.MIMEType = file.MIMEType
+		}
+		switch latest.State {
+		case "ACTIVE":
+			return latest, nil
+		case "FAILED":
+			return latest, fmt.Errorf("Gemini uploaded file %s entered FAILED state", file.Name)
+		}
+		if time.Now().Add(interval).After(deadline) {
+			return latest, fmt.Errorf("Gemini uploaded file %s did not become ACTIVE before timeout; current state %q", file.Name, latest.State)
+		}
+		time.Sleep(interval)
+	}
+}
+
+func getUploadedFile(apiKey, name string) (UploadedFile, error) {
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(geminiFileBaseURL, "/")+"/"+strings.TrimLeft(name, "/"), nil)
+	if err != nil {
+		return UploadedFile{}, err
+	}
+	req.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return UploadedFile{}, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return UploadedFile{}, fmt.Errorf("Gemini file get returned %s: %s", resp.Status, compactProviderBody(raw))
+	}
+	var parsed struct {
+		Name     string `json:"name"`
+		URI      string `json:"uri"`
+		MIMEType string `json:"mimeType"`
+		State    string `json:"state"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return UploadedFile{}, err
+	}
+	return UploadedFile{Name: parsed.Name, URI: parsed.URI, MIMEType: parsed.MIMEType, State: parsed.State}, nil
+}
+
+func SanitizeProviderResponse(raw string) json.RawMessage {
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		quoted, _ := json.Marshal(raw)
+		return json.RawMessage(quoted)
+	}
+	stripTransientGeminiFields(value)
+	out, err := json.Marshal(value)
+	if err != nil {
+		quoted, _ := json.Marshal(raw)
+		return json.RawMessage(quoted)
+	}
+	return json.RawMessage(out)
+}
+
+func stripTransientGeminiFields(value any) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if key == "thoughtSignature" {
+				delete(typed, key)
+				continue
+			}
+			stripTransientGeminiFields(child)
+		}
+	case []any:
+		for _, child := range typed {
+			stripTransientGeminiFields(child)
+		}
+	}
 }
 
 func geminiGenerateURL(model string) string {

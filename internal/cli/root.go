@@ -1656,11 +1656,12 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 				if err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("GEMINI_QA_FAILED", err.Error(), "Run qa doctor and verify model availability", true))
 				}
-				data["provider_response"] = json.RawMessage(raw)
+				sanitized := vqa.SanitizeProviderResponse(raw)
+				data["provider_response"] = sanitized
 				data["status"] = "analyzed"
 				if opts.Commit {
 					_ = os.MkdirAll(filepath.Dir(reportPath), 0o755)
-					_ = os.WriteFile(reportPath, []byte(raw), 0o644)
+					_ = os.WriteFile(reportPath, append(sanitized, '\n'), 0o644)
 				}
 			}
 			return writeOutput(cmd, opts, "qa analyze", data)
@@ -1742,7 +1743,7 @@ func colorReviewCommand(opts *globalOptions) *cobra.Command {
 				if err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("COLOR_REVIEW_FAILED", err.Error(), "Run qa doctor first", true))
 				}
-				data["provider_response"] = json.RawMessage(raw)
+				data["provider_response"] = vqa.SanitizeProviderResponse(raw)
 				data["status"] = "analyzed"
 			}
 			if opts.Commit {

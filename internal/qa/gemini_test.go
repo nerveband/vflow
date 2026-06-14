@@ -52,6 +52,7 @@ func TestAnalyzeFileVideoUploadsThenUsesFileData(t *testing.T) {
 	var server *httptest.Server
 	startSeen := false
 	uploadSeen := false
+	getSeen := false
 	generateSeen := false
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -70,7 +71,10 @@ func TestAnalyzeFileVideoUploadsThenUsesFileData(t *testing.T) {
 			if got := r.Header.Get("X-Goog-Upload-Command"); got != "upload, finalize" {
 				t.Fatalf("final upload command = %q", got)
 			}
-			_, _ = w.Write([]byte(`{"file":{"name":"files/abc","uri":"https://files.example/video","mimeType":"video/mp4","state":"ACTIVE"}}`))
+			_, _ = w.Write([]byte(`{"file":{"name":"files/abc","uri":"https://files.example/video","mimeType":"video/mp4","state":"PROCESSING"}}`))
+		case "/v1beta/files/abc":
+			getSeen = true
+			_, _ = w.Write([]byte(`{"name":"files/abc","uri":"https://files.example/video","mimeType":"video/mp4","state":"ACTIVE"}`))
 		case "/v1beta/models/gemini-3.5-flash:generateContent":
 			generateSeen = true
 			var body map[string]any
@@ -88,21 +92,35 @@ func TestAnalyzeFileVideoUploadsThenUsesFileData(t *testing.T) {
 	}))
 	defer server.Close()
 	oldUpload, oldGenerate := geminiUploadURL, geminiGenerateBaseURL
+	oldFileBase := geminiFileBaseURL
 	geminiUploadURL = server.URL + "/upload/v1beta/files"
 	geminiGenerateBaseURL = server.URL + "/v1beta/models"
+	geminiFileBaseURL = server.URL + "/v1beta"
 	t.Cleanup(func() {
 		geminiUploadURL = oldUpload
 		geminiGenerateBaseURL = oldGenerate
+		geminiFileBaseURL = oldFileBase
 	})
 
 	raw, file, err := AnalyzeFileVideo("test-key", "gemini-3.5-flash", videoPath, "review this")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !startSeen || !uploadSeen || !generateSeen {
-		t.Fatalf("expected upload and generate paths, got start=%v upload=%v generate=%v", startSeen, uploadSeen, generateSeen)
+	if !startSeen || !uploadSeen || !getSeen || !generateSeen {
+		t.Fatalf("expected upload, get, and generate paths, got start=%v upload=%v get=%v generate=%v", startSeen, uploadSeen, getSeen, generateSeen)
 	}
 	if file.URI != "https://files.example/video" || !strings.Contains(raw, `"candidates"`) {
 		t.Fatalf("unexpected response file=%+v raw=%s", file, raw)
+	}
+}
+
+func TestSanitizeProviderResponseStripsThoughtSignatures(t *testing.T) {
+	raw := `{"candidates":[{"content":{"parts":[{"text":"{}","thoughtSignature":"opaque"}]}}]}`
+	got := SanitizeProviderResponse(raw)
+	if strings.Contains(string(got), "thoughtSignature") || strings.Contains(string(got), "opaque") {
+		t.Fatalf("expected thought signature to be removed: %s", got)
+	}
+	if !strings.Contains(string(got), `"text":"{}"`) {
+		t.Fatalf("expected response content to remain: %s", got)
 	}
 }
