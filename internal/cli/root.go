@@ -1507,17 +1507,24 @@ func renderCommand(opts *globalOptions) *cobra.Command {
 }
 
 func renderPreviewCommand(opts *globalOptions) *cobra.Command {
-	var projectPath, source, target, ffmpegPath string
-	var duration float64
+	var projectPath, source, target, ffmpegPath, outputPath string
+	var duration, startSeconds float64
 	cmd := &cobra.Command{
 		Use:   "preview",
 		Short: "render a rough preview with ffmpeg",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output := outputPath
+			if output == "" {
+				output = filepath.Join(projectPath, "renders", "rough-preview.mp4")
+			} else if !filepath.IsAbs(output) {
+				output = filepath.Join(projectPath, output)
+			}
 			plan := vrender.PreviewPlan(vrender.Options{
-				Input:      firstNonEmptyString(source, filepath.Join(projectPath, "media", "source.mp4")),
-				Output:     filepath.Join(projectPath, "renders", "rough-preview.mp4"),
-				Target:     target,
-				MaxSeconds: int(duration),
+				Input:        firstNonEmptyString(source, filepath.Join(projectPath, "media", "source.mp4")),
+				Output:       output,
+				Target:       target,
+				MaxSeconds:   int(duration),
+				StartSeconds: startSeconds,
 			})
 			if ffmpegPath != "" && len(plan.Command) > 0 {
 				plan.Command[0] = ffmpegPath
@@ -1538,9 +1545,11 @@ func renderPreviewCommand(opts *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&source, "source", "", "source media path")
+	cmd.Flags().StringVar(&outputPath, "output", "", "output path; relative paths are resolved under --project")
 	cmd.Flags().StringVar(&target, "target", "youtube_16x9", "render target")
 	cmd.Flags().StringVar(&ffmpegPath, "ffmpeg-path", "", "ffmpeg binary path")
 	cmd.Flags().Float64Var(&duration, "duration-seconds", 2, "preview duration in seconds")
+	cmd.Flags().Float64Var(&startSeconds, "start-seconds", 0, "source start offset in seconds")
 	return cmd
 }
 

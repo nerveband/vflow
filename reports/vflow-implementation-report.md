@@ -12,7 +12,7 @@ Date: 2026-06-14
 - SQLite/FTS project index using `modernc.org/sqlite`: `project index --path` writes `~/.vflow/index.sqlite` or `$VFLOW_INDEX_PATH`, plus project `reports/provenance.json`; `transcript search --data-source local` reads the FTS index.
 - Atomic file artifact delivery with overwrite gating.
 - Artifact delivery now supports `stdout`, atomic `file:<path>`, and committed `webhook:<url>` POST delivery.
-- Live `ffprobe` source review, ffmpeg preview renders, ffmpeg LUT renders, render verification, and NLE sidecars.
+- Live `ffprobe` source review, ffmpeg preview renders with configurable start/output, ffmpeg LUT renders, render verification, and NLE sidecars.
 - `media proxy --commit` and `media samples --commit` now execute ffmpeg with configurable binary paths and keep dry-run JSON plans.
 - Render verification parses ffprobe JSON/evidence for duration, resolution, codec, audio streams, and frame count.
 - Live OpenAI STT adapter using `OPENAI_API_KEY` and `/v1/audio/transcriptions`; secrets are env-only.
@@ -278,6 +278,8 @@ Fixture proof:
 - Reference transcript import wrote 19,273 canonical words.
 - Timeline compile wrote one kept segment for 2,220 frames.
 - Preview render verified as H.264, 1920x1080, 1.001000 seconds.
+- Actual 30-second CLI cut wrote `renders/cair-ga-actual-30s.mp4` from `Executive Directors 12mm 4K 02.MP4` using `render preview --start-seconds 10 --duration-seconds 30 --output renders/cair-ga-actual-30s.mp4 --commit`.
+- The 30-second cut verified as H.264/AAC, 1920x1080, 30.03 seconds, with one audio stream.
 - LUT render wrote `renders/rough-preview-graded.mp4`.
 - FCPXML export wrote one-segment sidecar.
 - FCPXML import wrote `imports/nle-import.json` with `clip_trim` and `marker_note`.
@@ -286,7 +288,7 @@ Fixture proof:
 - Project index wrote SQLite/FTS rows for one project, four sources, 19,273 transcript words, 15 artifacts, and four NLE events.
 - Local FTS search returned five `Executive` transcript matches from the fixture with canonical frame ranges.
 
-Hardening pass note: the latest run only repeated `media probe --commit` and `transcript import --commit` against the copied `media/source-4k` files. No render, transcode, or audio extraction was run against the CAIR-GA fixture in this pass.
+Latest render note: the 30-second CAIR-GA clip was rendered only from the copied `media/source-4k` file inside `work/test-projects`; no `/Volumes/Shams Drive` path was used.
 
 ## Remaining Work
 

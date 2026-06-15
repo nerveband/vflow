@@ -21,6 +21,7 @@ This audit checks the active goal against current repo state and command output.
 - Live Gemini-backed `color review` completed and wrote `work/live-provider-proof/gemini/reports/color-grade-report.json`.
 - Gemini provider responses are sanitized so transient `thoughtSignature` payloads are not emitted in committed CLI reports.
 - Copied CAIR-GA fixture probe recognized four copied 3840x2160 source-camera clips under `media/source-4k`.
+- Actual CAIR-GA 30-second CLI render wrote `work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/cair-ga-actual-30s.mp4` from copied source-camera media and verified as 1920x1080 H.264/AAC.
 - Ignored `work/` and `tmp/` proof artifacts were not tracked into the public repo.
 
 ## Improved In Continuation
@@ -30,6 +31,7 @@ This audit checks the active goal against current repo state and command output.
 - Artifact `file:` delivery is atomic and rejects existing files unless `--overwrite --commit` is used.
 - Artifact `webhook:<url>` delivery posts a versioned JSON envelope in commit mode.
 - `media proxy --commit` and `media samples --commit` now execute ffmpeg and keep agent-readable command plans.
+- `render preview` supports `--start-seconds` and `--output`, so agents can cut a named clip from a specific source offset without overwriting `rough-preview.mp4`.
 - `render verify` can parse ffprobe JSON and report duration, resolution, codec, audio stream count, and frame count.
 - `cleanup review` can write an HTML review artifact.
 - NLE exporters now emit structured EDL, FCPXML/Resolve, Premiere XMEML, MLT, and OTIO text plus sidecars with roundtrip segment metadata.

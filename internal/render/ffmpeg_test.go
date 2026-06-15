@@ -22,3 +22,13 @@ func TestPreviewPlanFadeOutTracksDuration(t *testing.T) {
 		t.Fatalf("expected one-second fade-out start in %s", joined)
 	}
 }
+
+func TestPreviewPlanSupportsStartOffset(t *testing.T) {
+	plan := PreviewPlan(Options{Input: "source.mp4", Output: "rough.mp4", Target: "youtube_16x9", MaxSeconds: 30, StartSeconds: 12.5})
+	joined := strings.Join(plan.Command, " ")
+	for _, want := range []string{"-ss 12.500", "-i source.mp4", "-t 30"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("plan missing %q in %s", want, joined)
+		}
+	}
+}

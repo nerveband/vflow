@@ -9,10 +9,11 @@ import (
 )
 
 type Options struct {
-	Input      string `json:"input"`
-	Output     string `json:"output"`
-	Target     string `json:"target"`
-	MaxSeconds int    `json:"max_seconds,omitempty"`
+	Input        string  `json:"input"`
+	Output       string  `json:"output"`
+	Target       string  `json:"target"`
+	MaxSeconds   int     `json:"max_seconds,omitempty"`
+	StartSeconds float64 `json:"start_seconds,omitempty"`
 }
 
 type Plan struct {
@@ -35,12 +36,17 @@ func PreviewPlan(opts Options) Plan {
 	}
 	command := []string{
 		"ffmpeg", "-y",
+	}
+	if opts.StartSeconds > 0 {
+		command = append(command, "-ss", strconv.FormatFloat(opts.StartSeconds, 'f', 3, 64))
+	}
+	command = append(command,
 		"-i", opts.Input,
 		"-t", strconv.Itoa(opts.MaxSeconds),
 		"-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
-		"-af", "afade=t=in:st=0:d=0.03,afade=t=out:st=" + strconv.FormatFloat(fadeOutStart, 'f', 2, 64) + ":d=0.03",
+		"-af", "afade=t=in:st=0:d=0.03,afade=t=out:st="+strconv.FormatFloat(fadeOutStart, 'f', 2, 64)+":d=0.03",
 		opts.Output,
-	}
+	)
 	return Plan{Command: command, OutputPath: opts.Output, Target: opts.Target, Description: "ffmpeg preview render"}
 }
 

@@ -16,12 +16,22 @@ func TestRenderPreviewDryCommandShape(t *testing.T) {
 	if err := os.WriteFile(source, []byte("placeholder"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, errOut, code := runCLI(t, "render", "preview", "--project", dir, "--source", source, "--format", "json")
+	out, errOut, code := runCLI(t,
+		"render", "preview",
+		"--project", dir,
+		"--source", source,
+		"--output", "renders/sample-30s.mp4",
+		"--duration-seconds", "30",
+		"--start-seconds", "12.5",
+		"--format", "json",
+	)
 	if code != 0 {
 		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
 	}
-	if !strings.Contains(out, "rough-preview.mp4") {
-		t.Fatalf("expected render output path in json: %s", out)
+	for _, want := range []string{"sample-30s.mp4", `"-ss"`, `"12.500"`, `"-t"`, `"30"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q in:\n%s", want, out)
+		}
 	}
 }
 
