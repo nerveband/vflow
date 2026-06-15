@@ -26,6 +26,7 @@ import (
 	vproject "github.com/nerveband/vflow/internal/project"
 	vqa "github.com/nerveband/vflow/internal/qa"
 	vrender "github.com/nerveband/vflow/internal/render"
+	vsyncmap "github.com/nerveband/vflow/internal/syncmap"
 	vtimeline "github.com/nerveband/vflow/internal/timeline"
 	vtranscript "github.com/nerveband/vflow/internal/transcript"
 	vupdate "github.com/nerveband/vflow/internal/update"
@@ -110,6 +111,7 @@ func NewRootCommand() *cobra.Command {
 		mediaCommand(opts),
 		transcriptCommand(opts),
 		cleanupCommand(opts),
+		cutCommand(opts),
 		framingCommand(opts),
 		timelineCommand(opts),
 		renderCommand(opts),
@@ -545,22 +547,33 @@ func schemaCommand(opts *globalOptions) *cobra.Command {
 			reg := contract.DefaultRegistry()
 			status := "available"
 			var validationError string
+			artifactValidation := map[string]any{"status": "not_checked", "checked": 0}
 			if validate {
 				status = "valid"
+				errs := []string{}
 				if err := reg.Validate(); err != nil {
+					errs = append(errs, err.Error())
+				}
+				var artifactErr error
+				artifactValidation, artifactErr = validateArtifactSchemas(artifactSchemaNames())
+				if artifactErr != nil {
+					errs = append(errs, artifactErr.Error())
+				}
+				if len(errs) > 0 {
 					status = "invalid"
-					validationError = err.Error()
+					validationError = strings.Join(errs, "; ")
 				}
 			}
 			data := map[string]any{
-				"status":            status,
-				"validation_error":  validationError,
-				"schema_version":    "vflow-cli-schema/v1",
-				"command_count":     len(reg.Commands()),
-				"commands":          reg.Commands(),
-				"artifact_schemas":  artifactSchemaNames(),
-				"coverage_metadata": map[string]any{"dry_run_checked": true, "commit_checked": true, "examples_checked": true},
-				"generated_from":    "internal/contract.DefaultRegistry",
+				"status":                     status,
+				"validation_error":           validationError,
+				"schema_version":             "vflow-cli-schema/v1",
+				"command_count":              len(reg.Commands()),
+				"commands":                   reg.Commands(),
+				"artifact_schemas":           artifactSchemaNames(),
+				"artifact_schema_validation": artifactValidation,
+				"coverage_metadata":          map[string]any{"dry_run_checked": true, "commit_checked": true, "examples_checked": true},
+				"generated_from":             "internal/contract.DefaultRegistry",
 			}
 			return writeOutput(cmd, opts, "schema", data)
 		},
@@ -591,14 +604,82 @@ func artifactSchemaNames() []string {
 		"content-edl.schema.json",
 		"time-map.schema.json",
 		"framing-presets.schema.json",
+		"speaker-map.schema.json",
+		"framing-policy.schema.json",
 		"framing-lane.schema.json",
+		"review-queue.schema.json",
 		"compiled-timeline.schema.json",
 		"gemini-video-qa.schema.json",
 		"color-grade-report.schema.json",
 		"nle-diff.schema.json",
 		"provenance.schema.json",
 		"render-report.schema.json",
+		"media-sync-map.schema.json",
+		"source-range-manifest.schema.json",
+		"transcript-proof.schema.json",
 	}
+}
+
+func validateArtifactSchemas(names []string) (map[string]any, error) {
+	root, err := findSchemaRoot()
+	if err != nil {
+		return map[string]any{"status": "invalid", "checked": 0, "error": err.Error()}, err
+	}
+	missing := []string{}
+	invalid := []string{}
+	for _, name := range names {
+		raw, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			missing = append(missing, name)
+			continue
+		}
+		var schema map[string]any
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			invalid = append(invalid, name+": "+err.Error())
+			continue
+		}
+		if !nonEmptySchemaString(schema, "$schema") || !nonEmptySchemaString(schema, "title") || !nonEmptySchemaString(schema, "type") {
+			invalid = append(invalid, name+": missing $schema, title, or type")
+		}
+	}
+	status := "valid"
+	var errOut error
+	if len(missing) > 0 || len(invalid) > 0 {
+		status = "invalid"
+		errOut = fmt.Errorf("artifact schema validation failed: missing=%v invalid=%v", missing, invalid)
+	}
+	return map[string]any{
+		"status":  status,
+		"root":    filepath.ToSlash(root),
+		"checked": len(names),
+		"missing": missing,
+		"invalid": invalid,
+	}, errOut
+}
+
+func findSchemaRoot() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	dir := cwd
+	for i := 0; i < 8; i++ {
+		candidate := filepath.Join(dir, "schemas")
+		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {
+			return candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("schemas directory not found from %s", cwd)
+}
+
+func nonEmptySchemaString(schema map[string]any, key string) bool {
+	value, ok := schema[key].(string)
+	return ok && strings.TrimSpace(value) != ""
 }
 
 func projectCommand(opts *globalOptions) *cobra.Command {
@@ -744,8 +825,126 @@ func projectIndexCommand(opts *globalOptions) *cobra.Command {
 
 func mediaCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "media", Short: "media workflow commands"}
-	parent.AddCommand(mediaProbeCommand(opts), mediaIngestCommand(opts), mediaProxyCommand(opts), mediaSamplesCommand(opts))
+	parent.AddCommand(mediaProbeCommand(opts), mediaIngestCommand(opts), mediaProxyCommand(opts), mediaSamplesCommand(opts), mediaSyncCommand(opts), mediaExtractRangesCommand(opts))
 	return parent
+}
+
+func mediaSyncCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, outputPath, proofDir, reference, sourcesCSV, ffmpegPath, frameRate string
+	var maxLag float64
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "calibrate source-camera sync from audio waveforms",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if reference == "" {
+				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_REFERENCE", "missing --reference-source-id", "Pass the source id to use as timeline reference", false))
+			}
+			sources, err := parseSourceInputs(sourcesCSV)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("SOURCE_LIST_INVALID", err.Error(), "Use id=/path/video.mp4 pairs separated by commas", false))
+			}
+			if outputPath == "" {
+				outputPath = filepath.Join(projectPath, "calibration", "media-sync-map.json")
+			} else if !filepath.IsAbs(outputPath) {
+				outputPath = filepath.Join(projectPath, outputPath)
+			}
+			if proofDir == "" {
+				proofDir = filepath.Join(projectPath, "calibration", "sync-proof")
+			} else if !filepath.IsAbs(proofDir) {
+				proofDir = filepath.Join(projectPath, proofDir)
+			}
+			ctx, cancel, err := commandContext(opts.Timeout)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_TIMEOUT", err.Error(), "Use a Go duration such as 30s, 5m, or 20m", false))
+			}
+			defer cancel()
+			report, err := vsyncmap.Calibrate(ctx, vsyncmap.CalibrationOptions{
+				ProjectID: projectIDFromPath(projectPath), ReferenceSourceID: reference, Sources: sources,
+				OutputPath: outputPath, ProofDir: proofDir, FFmpegPath: ffmpegPath, MaxLagSeconds: maxLag,
+				FrameRate: frameRate, Commit: opts.Commit,
+			})
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("MEDIA_SYNC_FAILED", err.Error(), "Check ffmpeg, source paths, audio streams, and timeout", true))
+			}
+			return writeOutput(cmd, opts, "media sync", report)
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&outputPath, "output", "", "sync map output path")
+	cmd.Flags().StringVar(&proofDir, "proof-dir", "", "waveform proof directory")
+	cmd.Flags().StringVar(&reference, "reference-source-id", "", "reference source id")
+	cmd.Flags().StringVar(&sourcesCSV, "sources", "", "comma-separated id=path source list")
+	cmd.Flags().StringVar(&ffmpegPath, "ffmpeg-path", "", "ffmpeg binary path")
+	cmd.Flags().StringVar(&frameRate, "frame-rate", "24000/1001", "canonical frame rate")
+	cmd.Flags().Float64Var(&maxLag, "max-lag-seconds", 90, "maximum correlation lag search")
+	return cmd
+}
+
+func mediaExtractRangesCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, syncMapPath, rangesPath, outputDir, manifestPath, ffmpegPath string
+	cmd := &cobra.Command{
+		Use:   "extract-ranges",
+		Short: "plan or extract transcript-mapped local source ranges",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if syncMapPath == "" {
+				syncMapPath = filepath.Join(projectPath, "calibration", "media-sync-map.json")
+			} else if !filepath.IsAbs(syncMapPath) {
+				syncMapPath = projectRelativePath(projectPath, syncMapPath)
+			}
+			if rangesPath == "" {
+				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_RANGES", "missing --ranges", "Pass JSON ranges with source_id and transcript seconds", false))
+			}
+			if !filepath.IsAbs(rangesPath) {
+				rangesPath = projectRelativePath(projectPath, rangesPath)
+			}
+			m, err := vsyncmap.Read(syncMapPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("SYNC_MAP_READ_FAILED", err.Error(), "Run media sync/transcript sync first", false))
+			}
+			ranges, err := vmedia.ReadTranscriptRanges(rangesPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("RANGES_INVALID", err.Error(), "Pass a JSON array or object with ranges", false))
+			}
+			if outputDir == "" {
+				outputDir = filepath.Join(projectPath, "media", "ranges")
+			} else if !filepath.IsAbs(outputDir) {
+				outputDir = projectRelativePath(projectPath, outputDir)
+			}
+			manifest, err := vmedia.PlanSourceRanges(m, ranges, outputDir, ffmpegPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("RANGE_PLAN_INVALID", err.Error(), "Check source ids and transcript seconds", false))
+			}
+			manifest.SyncMap = filepath.ToSlash(syncMapPath)
+			if manifestPath == "" {
+				manifestPath = filepath.Join(projectPath, "calibration", "source-range-manifest.json")
+			} else if !filepath.IsAbs(manifestPath) {
+				manifestPath = projectRelativePath(projectPath, manifestPath)
+			}
+			status := "planned"
+			if opts.Commit {
+				ctx, cancel, err := commandContext(opts.Timeout)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("INVALID_TIMEOUT", err.Error(), "Use a Go duration such as 30s, 5m, or 20m", false))
+				}
+				defer cancel()
+				if err := vmedia.RunSourceRanges(ctx, manifest); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("RANGE_EXTRACT_FAILED", err.Error(), "Check ffmpeg, source media, destination space, and timeout", true))
+				}
+				if err := writeJSONFile(manifestPath, manifest); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("RANGE_MANIFEST_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				status = "extracted"
+			}
+			return writeOutput(cmd, opts, "media extract-ranges", map[string]any{"status": status, "manifest_path": filepath.ToSlash(manifestPath), "manifest": manifest})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&syncMapPath, "sync-map", "", "vflow-media-sync-map/v1 path")
+	cmd.Flags().StringVar(&rangesPath, "ranges", "", "transcript range JSON")
+	cmd.Flags().StringVar(&outputDir, "output-dir", "", "range clip output directory")
+	cmd.Flags().StringVar(&manifestPath, "manifest", "", "source range manifest output path")
+	cmd.Flags().StringVar(&ffmpegPath, "ffmpeg-path", "", "ffmpeg binary path")
+	return cmd
 }
 
 func mediaProbeCommand(opts *globalOptions) *cobra.Command {
@@ -1073,6 +1272,87 @@ func cleanupApplyCommand(opts *globalOptions) *cobra.Command {
 	return cmd
 }
 
+func cutCommand(opts *globalOptions) *cobra.Command {
+	parent := &cobra.Command{Use: "cut", Short: "cut decision workflow commands"}
+	parent.AddCommand(cutCreateCommand(opts))
+	return parent
+}
+
+func cutCreateCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, rangesPath, syncMapPath, outputPath string
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "create a transcript cut decision from transcript ranges",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if rangesPath == "" {
+				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_RANGES", "missing --ranges", "Pass ranges JSON with source_id and transcript seconds", false))
+			}
+			if !filepath.IsAbs(rangesPath) {
+				rangesPath = projectRelativePath(projectPath, rangesPath)
+			}
+			ranges, err := vmedia.ReadTranscriptRanges(rangesPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("RANGES_INVALID", err.Error(), "Pass a JSON array or object with ranges", false))
+			}
+			var m vsyncmap.SyncMap
+			if syncMapPath != "" {
+				if !filepath.IsAbs(syncMapPath) {
+					syncMapPath = projectRelativePath(projectPath, syncMapPath)
+				}
+				m, err = vsyncmap.Read(syncMapPath)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("SYNC_MAP_READ_FAILED", err.Error(), "Check --sync-map path", false))
+				}
+			}
+			cut := vrender.TranscriptCut{Version: "vflow-transcript-cut/v1"}
+			for i, r := range ranges {
+				id := r.ID
+				if id == "" {
+					id = fmt.Sprintf("cut_%06d", i+1)
+				}
+				seg := vrender.TranscriptCutSegment{
+					ID: r.ID, SourceID: r.SourceID, TranscriptStartSeconds: r.Start, TranscriptEndSeconds: r.End,
+					StartSeconds: r.Start, EndSeconds: r.End, Text: r.Text,
+				}
+				seg.ID = id
+				if syncMapPath != "" {
+					source, ok := m.Source(r.SourceID)
+					if ok {
+						seg.Source = source.Path
+					}
+					start, end, err := m.ResolveRange(r.SourceID, r.Start, r.End)
+					if err != nil {
+						return writeStructuredError(cmd, opts, verrors.Validation("SYNC_RANGE_INVALID", err.Error(), "Check source ids and transcript seconds", false))
+					}
+					seg.StartSeconds, seg.EndSeconds = start, end
+					seg.SourceTimelineOffset = start - r.Start
+					seg.ReferenceStartSeconds = m.ReferenceSeconds(r.Start)
+					seg.ReferenceEndSeconds = m.ReferenceSeconds(r.End)
+				}
+				cut.Segments = append(cut.Segments, seg)
+			}
+			if outputPath == "" {
+				outputPath = filepath.Join(projectPath, "decisions", "transcript-cut.json")
+			} else if !filepath.IsAbs(outputPath) {
+				outputPath = projectRelativePath(projectPath, outputPath)
+			}
+			status := "planned"
+			if opts.Commit {
+				if err := writeJSONFile(outputPath, cut); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("CUT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				status = "written"
+			}
+			return writeOutput(cmd, opts, "cut create", map[string]any{"status": status, "artifact": filepath.ToSlash(outputPath), "cut": cut})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&rangesPath, "ranges", "", "transcript range JSON")
+	cmd.Flags().StringVar(&syncMapPath, "sync-map", "", "optional sync map path")
+	cmd.Flags().StringVar(&outputPath, "output", "", "transcript cut output path")
+	return cmd
+}
+
 func framingCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "framing", Short: "framing workflow commands"}
 	preset := &cobra.Command{Use: "preset", Short: "framing preset commands"}
@@ -1174,32 +1454,50 @@ func framingCompileCommand(opts *globalOptions) *cobra.Command {
 		Use:   "compile",
 		Short: "compile an approved framing lane",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if input == "" {
-				input = filepath.Join(projectPath, "decisions", "framing-lane.proposed.json")
+			if input != "" {
+				return writeStructuredError(cmd, opts, verrors.Validation("FRAMING_INPUT_UNSUPPORTED", "--input is not used by the contract compiler", "Use calibration/framing-presets.json, calibration/speaker-map.json, policy/framing-policy.json, and transcript/words.json", false))
 			}
-			raw, err := os.ReadFile(input)
+			presets, err := vframing.ReadPresets(projectPath)
 			if err != nil {
-				return writeStructuredError(cmd, opts, verrors.External("FRAMING_LANE_READ_FAILED", err.Error(), "Run framing propose --commit or pass --input", false))
+				return writeStructuredError(cmd, opts, verrors.External("FRAMING_PRESET_READ_FAILED", err.Error(), "Import framing presets first", false))
 			}
-			var lane map[string]any
-			if err := json.Unmarshal(raw, &lane); err != nil {
-				return writeStructuredError(cmd, opts, verrors.Validation("FRAMING_LANE_INVALID", err.Error(), "Pass valid framing lane JSON", false))
+			speakerMap, err := vframing.ReadSpeakerMap(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("SPEAKER_MAP_READ_FAILED", err.Error(), "Create calibration/speaker-map.json first", false))
 			}
-			lane["compiled"] = true
-			status := "compiled"
-			path := filepath.Join(projectPath, "decisions", "framing-lane.json")
+			policy, err := vframing.ReadPolicy(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("FRAMING_POLICY_READ_FAILED", err.Error(), "Fix policy/framing-policy.json or remove it to use defaults", false))
+			}
+			words, err := vtranscript.ReadWords(projectPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_READ_FAILED", err.Error(), "Create or import transcript/words.json first", false))
+			}
+			compiled, err := vframing.CompileLane(vframing.CompileInput{
+				Presets:    presets,
+				SpeakerMap: speakerMap,
+				Policy:     policy,
+				Words:      words,
+			})
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("FRAMING_CONTRACT_INVALID", err.Error(), "Fix presets, speaker-map, policy, or transcript frame ranges", false))
+			}
+			status := "planned"
+			artifacts := []string{
+				filepath.ToSlash(filepath.Join(projectPath, "decisions", "framing-lane.json")),
+				filepath.ToSlash(filepath.Join(projectPath, "review", "review-queue.json")),
+			}
 			if opts.Commit {
-				out, _ := json.MarshalIndent(lane, "", "  ")
-				if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+				if err := vframing.WriteCompiled(projectPath, compiled); err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("FRAMING_LANE_WRITE_FAILED", err.Error(), "Check project write permissions", false))
 				}
 				status = "written"
 			}
-			return writeOutput(cmd, opts, "framing compile", map[string]any{"status": status, "artifact": filepath.ToSlash(path), "lane": lane})
+			return writeOutput(cmd, opts, "framing compile", map[string]any{"status": status, "artifacts": artifacts, "lane": compiled.Lane, "review_queue": compiled.ReviewQueue})
 		},
 	}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
-	cmd.Flags().StringVar(&input, "input", "", "framing lane input")
+	cmd.Flags().StringVar(&input, "input", "", "deprecated framing lane input")
 	return cmd
 }
 
@@ -1209,16 +1507,22 @@ func framingReviewCommand(opts *globalOptions) *cobra.Command {
 		Use:   "review",
 		Short: "review compiled framing lane",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path := filepath.Join(projectPath, "decisions", "framing-lane.json")
-			raw, err := os.ReadFile(path)
+			lanePath := filepath.Join(projectPath, "decisions", "framing-lane.json")
+			raw, err := os.ReadFile(lanePath)
 			if err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("FRAMING_LANE_READ_FAILED", err.Error(), "Run framing compile --commit first", false))
 			}
-			var lane map[string]any
+			var lane vframing.Lane
 			if err := json.Unmarshal(raw, &lane); err != nil {
 				return writeStructuredError(cmd, opts, verrors.Validation("FRAMING_LANE_INVALID", err.Error(), "Check compiled framing lane JSON", false))
 			}
-			return writeOutput(cmd, opts, "framing review", map[string]any{"status": "reviewed", "lane": lane, "needs_review": []any{}})
+			reviewQueue := vframing.ReviewQueue{Version: "vflow-review-queue/v1", Items: []vframing.ReviewItem{}}
+			if reviewRaw, err := os.ReadFile(filepath.Join(projectPath, "review", "review-queue.json")); err == nil {
+				if err := json.Unmarshal(reviewRaw, &reviewQueue); err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("REVIEW_QUEUE_INVALID", err.Error(), "Check review/review-queue.json", false))
+				}
+			}
+			return writeOutput(cmd, opts, "framing review", map[string]any{"status": "reviewed", "lane": lane, "needs_review": reviewQueue.Items, "review_queue": reviewQueue})
 		},
 	}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
@@ -1346,24 +1650,10 @@ func timelineCompileCommand(opts *globalOptions) *cobra.Command {
 		Short: "compile content decisions into time-map and timeline artifacts",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			edl := vcleanup.ContentEDL{Version: "vflow-content-edl/v1"}
-			if edl, err := vcleanup.ReadContentEDL(projectPath); err == nil {
-				compiled := vtimeline.Compile(edl, int(durationFrames))
-				status := "planned"
-				if opts.Commit {
-					if err := vtimeline.WriteCompiled(projectPath, compiled); err != nil {
-						return err
-					}
-					status = "written"
-				}
-				return writeOutput(cmd, opts, "timeline compile", map[string]any{
-					"status":            status,
-					"time_map":          compiled.TimeMap,
-					"compiled_timeline": compiled,
-					"artifacts": []string{
-						filepath.ToSlash(filepath.Join(projectPath, "decisions", "time-map.json")),
-						filepath.ToSlash(filepath.Join(projectPath, "timeline", "compiled-timeline.json")),
-					},
-				})
+			if readEDL, err := vcleanup.ReadContentEDL(projectPath); err == nil {
+				edl = readEDL
+			} else if !os.IsNotExist(err) {
+				return writeStructuredError(cmd, opts, verrors.Validation("CONTENT_EDL_INVALID", err.Error(), "Fix decisions/content-edl.json or remove it to compile an empty content lane", false))
 			}
 			compiled := vtimeline.Compile(edl, int(durationFrames))
 			status := "planned"
@@ -1500,9 +1790,49 @@ func trimText(value string, max int) string {
 	return value[:max] + "..."
 }
 
+func parseSourceInputs(value string) ([]vsyncmap.SourceInput, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, fmt.Errorf("sources are required")
+	}
+	var out []vsyncmap.SourceInput
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, path, ok := strings.Cut(part, "=")
+		if !ok || strings.TrimSpace(id) == "" || strings.TrimSpace(path) == "" {
+			return nil, fmt.Errorf("invalid source %q", part)
+		}
+		out = append(out, vsyncmap.SourceInput{ID: strings.TrimSpace(id), Path: strings.TrimSpace(path)})
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("sources are required")
+	}
+	return out, nil
+}
+
+func projectIDFromPath(path string) string {
+	if proj, err := vproject.Load(path); err == nil && proj.ID != "" {
+		return proj.ID
+	}
+	return filepath.Base(filepath.Clean(path))
+}
+
+func writeJSONFile(path string, value any) error {
+	raw, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(raw, '\n'), 0o644)
+}
+
 func renderCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "render", Short: "render workflow commands"}
-	parent.AddCommand(renderPreviewCommand(opts), renderVerifyCommand(opts))
+	parent.AddCommand(renderPreviewCommand(opts), renderTranscriptCutCommand(opts), renderVerifyCommand(opts), renderVerifyTranscriptCommand(opts))
 	return parent
 }
 
@@ -1538,8 +1868,10 @@ func renderPreviewCommand(opts *globalOptions) *cobra.Command {
 				}
 				_ = vjobs.Write(projectPath, vjobs.NewRecord(projectPath, "render preview", "succeeded", true))
 				status = "rendered"
+				if err := vrender.WriteReport(reportPath, plan, status); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("RENDER_REPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
 			}
-			_ = vrender.WriteReport(reportPath, plan, status)
 			return writeOutput(cmd, opts, "render preview", map[string]any{"status": status, "plan": plan, "report_path": filepath.ToSlash(reportPath)})
 		},
 	}
@@ -1553,14 +1885,138 @@ func renderPreviewCommand(opts *globalOptions) *cobra.Command {
 	return cmd
 }
 
+func renderTranscriptCutCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, inputPath, outputPath, target, ffmpegPath, syncMapPath string
+	cmd := &cobra.Command{
+		Use:   "transcript-cut",
+		Short: "render transcript-selected segments into one social cut",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if inputPath == "" {
+				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass a vflow-transcript-cut/v1 JSON edit decision file", false))
+			}
+			edit, err := vrender.ReadTranscriptCut(inputPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_CUT_READ_FAILED", err.Error(), "Check --input path and JSON shape", false))
+			}
+			if syncMapPath != "" {
+				m, err := vsyncmap.Read(syncMapPath)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("SYNC_MAP_READ_FAILED", err.Error(), "Check --sync-map path", false))
+				}
+				edit, err = vrender.ResolveTranscriptCutWithSyncMap(edit, m)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("SYNC_MAP_RESOLVE_FAILED", err.Error(), "Check source_id and transcript seconds in the cut", false))
+				}
+			}
+			for i := range edit.Segments {
+				if edit.Segments[i].Source != "" && !filepath.IsAbs(edit.Segments[i].Source) {
+					edit.Segments[i].Source = filepath.Join(projectPath, edit.Segments[i].Source)
+				}
+			}
+			output := outputPath
+			if output == "" {
+				output = filepath.Join(projectPath, "renders", "transcript-social-cut.mp4")
+			} else if !filepath.IsAbs(output) {
+				output = filepath.Join(projectPath, output)
+			}
+			result, err := vrender.TranscriptCutPlan(edit, output, target)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("TRANSCRIPT_CUT_INVALID", err.Error(), "Check segment source/start/end values", false))
+			}
+			if ffmpegPath != "" && len(result.Command) > 0 {
+				result.Command[0] = ffmpegPath
+			}
+			reportPath := filepath.Join(projectPath, "reports", "transcript-cut-render-report.json")
+			status := "planned"
+			if opts.Commit {
+				if err := vrender.Run(result.Plan); err != nil {
+					_ = vjobs.Write(projectPath, vjobs.NewRecord(projectPath, "render transcript-cut", "failed", true))
+					return writeStructuredError(cmd, opts, verrors.External("FFMPEG_RENDER_FAILED", err.Error(), "Check ffmpeg, segment sources, and codecs", false))
+				}
+				_ = vjobs.Write(projectPath, vjobs.NewRecord(projectPath, "render transcript-cut", "succeeded", true))
+				status = "rendered"
+			}
+			_ = vrender.WriteTranscriptCutReport(reportPath, result, status)
+			return writeOutput(cmd, opts, "render transcript-cut", map[string]any{
+				"status":           status,
+				"plan":             result.Plan,
+				"segments":         result.Segments,
+				"duration_seconds": result.DurationSeconds,
+				"report_path":      filepath.ToSlash(reportPath),
+			})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&inputPath, "input", "", "vflow-transcript-cut/v1 JSON edit decision file")
+	cmd.Flags().StringVar(&outputPath, "output", "", "output path; relative paths are resolved under --project")
+	cmd.Flags().StringVar(&target, "target", "youtube_16x9", "render target")
+	cmd.Flags().StringVar(&ffmpegPath, "ffmpeg-path", "", "ffmpeg binary path")
+	cmd.Flags().StringVar(&syncMapPath, "sync-map", "", "optional vflow-media-sync-map/v1 for transcript-relative segments")
+	return cmd
+}
+
+func renderVerifyTranscriptCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, renderPath, cutPath, outputPath string
+	cmd := &cobra.Command{
+		Use:   "verify-transcript",
+		Short: "write transcript proof expectations for a rendered cut",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cutPath == "" {
+				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_CUT", "missing --cut", "Pass the transcript-cut JSON used for the render", false))
+			}
+			cut, err := vrender.ReadTranscriptCut(cutPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("CUT_READ_FAILED", err.Error(), "Check --cut path", false))
+			}
+			if renderPath == "" {
+				renderPath = filepath.Join(projectPath, "renders", "transcript-social-cut.mp4")
+			}
+			if outputPath == "" {
+				outputPath = filepath.Join(projectPath, "reports", "transcript-proof.json")
+			}
+			segments := []map[string]any{}
+			for _, segment := range cut.Segments {
+				segments = append(segments, map[string]any{
+					"id": segment.ID, "source_id": segment.SourceID, "text": segment.Text,
+					"transcript_start_seconds": segment.TranscriptStartSeconds,
+					"transcript_end_seconds":   segment.TranscriptEndSeconds,
+					"source_start_seconds":     segment.StartSeconds,
+					"source_end_seconds":       segment.EndSeconds,
+				})
+			}
+			proof := map[string]any{
+				"version": "vflow-transcript-proof/v1", "status": "planned",
+				"render": filepath.ToSlash(renderPath), "cut": filepath.ToSlash(cutPath),
+				"provider_required": false, "segments": segments,
+				"warnings": []string{"local proof records expected transcript coverage; run live STT separately when OPENAI_API_KEY is present"},
+			}
+			if opts.Commit {
+				proof["status"] = "written"
+				if err := writeJSONFile(outputPath, proof); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("TRANSCRIPT_PROOF_WRITE_FAILED", err.Error(), "Check report path permissions", false))
+				}
+			}
+			return writeOutput(cmd, opts, "render verify-transcript", map[string]any{"proof_path": filepath.ToSlash(outputPath), "proof": proof})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&renderPath, "render", "", "render file path")
+	cmd.Flags().StringVar(&cutPath, "cut", "", "transcript cut JSON")
+	cmd.Flags().StringVar(&outputPath, "output", "", "transcript proof report path")
+	return cmd
+}
+
 func renderVerifyCommand(opts *globalOptions) *cobra.Command {
-	var renderPath, ffprobePath, ffprobeJSON string
+	var projectPath, renderPath, ffprobePath, ffprobeJSON string
 	var expectedWidth, expectedHeight int
 	var expectedDuration float64
 	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "verify a rendered preview",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if renderPath != "" && !filepath.IsAbs(renderPath) {
+				renderPath = projectRelativePath(projectPath, renderPath)
+			}
 			status := "missing"
 			if ffprobeJSON != "" {
 				raw, err := os.ReadFile(ffprobeJSON)
@@ -1583,6 +2039,7 @@ func renderVerifyCommand(opts *globalOptions) *cobra.Command {
 			return writeOutput(cmd, opts, "render verify", vrender.VerifyResult{Status: status, Render: renderPath})
 		},
 	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&renderPath, "render", "renders/rough-preview.mp4", "render path")
 	cmd.Flags().StringVar(&renderPath, "input", "renders/rough-preview.mp4", "alias for --render")
 	cmd.Flags().StringVar(&ffprobePath, "ffprobe-path", "", "ffprobe binary path")
@@ -1827,7 +2284,7 @@ func nleCommand(opts *globalOptions) *cobra.Command {
 }
 
 func nleExportCommand(opts *globalOptions) *cobra.Command {
-	var projectPath, target, deliver string
+	var projectPath, target, deliver, syncMapPath string
 	cmd := &cobra.Command{
 		Use:   "export",
 		Short: "export timeline to NLE interchange format",
@@ -1844,6 +2301,7 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 					for _, segment := range tl.Segments {
 						segments = append(segments, vnle.Segment{
 							ID:               segment.ID,
+							SyncMapRef:       syncMapPath,
 							SourceFrameIn:    segment.SourceFrameIn,
 							SourceFrameOut:   segment.SourceFrameOut,
 							TimelineFrameIn:  segment.TimelineFrameIn,
@@ -1852,7 +2310,7 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 					}
 				}
 			}
-			res := vnle.Export(vnle.Options{Target: target, Output: outputPath}, segments)
+			res := vnle.Export(vnle.Options{Target: target, Output: outputPath, SyncMapRef: syncMapPath}, segments)
 			status := "planned"
 			if opts.Commit {
 				if err := vnle.WriteExport(projectPath, res); err != nil {
@@ -1866,6 +2324,7 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&target, "target", "fcpxml", "export target")
 	cmd.Flags().StringVar(&deliver, "deliver", "", "delivery target")
+	cmd.Flags().StringVar(&syncMapPath, "sync-map", "", "vflow-media-sync-map/v1 sidecar reference")
 	return cmd
 }
 
@@ -2113,8 +2572,64 @@ func nleApplyCommand(opts *globalOptions) *cobra.Command {
 
 func transcriptCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "transcript", Short: "transcript workflow commands"}
-	parent.AddCommand(transcriptCreateCommand(opts), transcriptImportCommand(opts), transcriptAlignCommand(opts), transcriptBakeoffCommand(opts), transcriptSearchCommand(opts))
+	parent.AddCommand(transcriptCreateCommand(opts), transcriptImportCommand(opts), transcriptAlignCommand(opts), transcriptBakeoffCommand(opts), transcriptSearchCommand(opts), transcriptSyncCommand(opts))
 	return parent
+}
+
+func transcriptSyncCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, syncMapPath, outputPath, anchorID, method, text string
+	var transcriptSeconds, referenceSeconds, confidence float64
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "record transcript-to-reference timing in a sync map",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if syncMapPath == "" {
+				syncMapPath = filepath.Join(projectPath, "calibration", "media-sync-map.json")
+			}
+			if outputPath == "" {
+				outputPath = syncMapPath
+			}
+			m, err := vsyncmap.Read(syncMapPath)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("SYNC_MAP_READ_FAILED", err.Error(), "Run media sync first or pass --sync-map", false))
+			}
+			if anchorID == "" {
+				anchorID = "transcript_anchor"
+			}
+			if method == "" {
+				method = "manual_text_anchor"
+			}
+			if confidence == 0 {
+				confidence = 1
+			}
+			m = vsyncmap.ApplyTranscriptOffset(m, transcriptSeconds, referenceSeconds, anchorID, method, text, confidence)
+			validation := m.Validate(vsyncmap.ValidationOptions{})
+			status := "planned"
+			if opts.Commit {
+				if len(validation) > 0 {
+					return writeStructuredError(cmd, opts, verrors.Validation("SYNC_MAP_INVALID", strings.Join(validation, "; "), "Fix sync map source metadata before writing", false))
+				}
+				if err := vsyncmap.Write(outputPath, m); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("SYNC_MAP_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+				}
+				status = "written"
+			}
+			return writeOutput(cmd, opts, "transcript sync", map[string]any{
+				"status": status, "sync_map": filepath.ToSlash(outputPath), "transcript_to_reference_offset_seconds": m.TranscriptToReferenceOffsetSeconds,
+				"validation_errors": validation, "warnings": m.ConfidenceWarnings(), "map": m,
+			})
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&syncMapPath, "sync-map", "", "input sync map path")
+	cmd.Flags().StringVar(&outputPath, "output", "", "output sync map path")
+	cmd.Flags().Float64Var(&transcriptSeconds, "transcript-seconds", 0, "known transcript timestamp")
+	cmd.Flags().Float64Var(&referenceSeconds, "reference-seconds", 0, "matching reference source timestamp")
+	cmd.Flags().StringVar(&anchorID, "anchor-id", "", "anchor id")
+	cmd.Flags().StringVar(&method, "method", "", "anchor method")
+	cmd.Flags().StringVar(&text, "matched-text", "", "matched anchor text")
+	cmd.Flags().Float64Var(&confidence, "confidence", 1, "anchor confidence")
+	return cmd
 }
 
 func transcriptImportCommand(opts *globalOptions) *cobra.Command {
@@ -2505,6 +3020,13 @@ func commandContext(timeoutValue string) (context.Context, context.CancelFunc, e
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	return ctx, cancel, nil
+}
+
+func projectRelativePath(projectPath, path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(projectPath, path)
 }
 
 func splitCSV(value string) []string {

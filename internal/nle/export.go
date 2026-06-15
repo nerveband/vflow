@@ -37,6 +37,9 @@ func Export(opts Options, segments []Segment) ExportResult {
 		if segment.SourceMediaID == "" {
 			segment.SourceMediaID = opts.SourceMediaID
 		}
+		if segment.SyncMapRef == "" {
+			segment.SyncMapRef = opts.SyncMapRef
+		}
 		if len(segment.MarkerIDs) == 0 {
 			segment.MarkerIDs = []string{"vflow_marker_" + segment.VflowSegmentID}
 		}
@@ -52,13 +55,16 @@ func Export(opts Options, segments []Segment) ExportResult {
 			Output:        opts.Output,
 			SourceMediaID: opts.SourceMediaID,
 			SourceURL:     opts.SourceURL,
+			SyncMapRef:    opts.SyncMapRef,
 			Rate:          opts.Rate,
 			ProjectName:   opts.ProjectName,
 		},
 		Sidecar: Sidecar{
-			Version:  "vflow-nle-sidecar/v1",
-			Target:   opts.Target,
-			Segments: normalized,
+			Version:    "vflow-nle-sidecar/v1",
+			Target:     opts.Target,
+			SyncMapRef: opts.SyncMapRef,
+			Provenance: "source/reference/transcript frame provenance is canonical in vflow sync-map sidecars",
+			Segments:   normalized,
 		},
 	}
 }

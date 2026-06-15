@@ -17,11 +17,19 @@ type CompiledTimeline struct {
 }
 
 type Segment struct {
-	ID               string `json:"id"`
-	SourceFrameIn    int    `json:"source_frame_in"`
-	SourceFrameOut   int    `json:"source_frame_out"`
-	TimelineFrameIn  int    `json:"timeline_frame_in"`
-	TimelineFrameOut int    `json:"timeline_frame_out"`
+	ID               string          `json:"id"`
+	SourceFrameIn    int             `json:"source_frame_in"`
+	SourceFrameOut   int             `json:"source_frame_out"`
+	TimelineFrameIn  int             `json:"timeline_frame_in"`
+	TimelineFrameOut int             `json:"timeline_frame_out"`
+	Provenance       FrameProvenance `json:"provenance"`
+}
+
+type FrameProvenance struct {
+	SourceFrameIn    int `json:"source_frame_in"`
+	SourceFrameOut   int `json:"source_frame_out"`
+	TimelineFrameIn  int `json:"timeline_frame_in"`
+	TimelineFrameOut int `json:"timeline_frame_out"`
 }
 
 type ReviewItem struct {
@@ -41,7 +49,7 @@ func Compile(edl cleanup.ContentEDL, durationFrames int) CompiledTimeline {
 		if del.StartFrame > lastSource {
 			in := m.SourceBoundaryToTimeline(lastSource)
 			out := m.SourceBoundaryToTimeline(del.StartFrame)
-			tl.Segments = append(tl.Segments, Segment{ID: segmentID(len(tl.Segments) + 1), SourceFrameIn: lastSource, SourceFrameOut: del.StartFrame, TimelineFrameIn: in, TimelineFrameOut: out})
+			tl.Segments = append(tl.Segments, newSegment(len(tl.Segments)+1, lastSource, del.StartFrame, in, out))
 		}
 		lastSource = del.EndFrame
 		_ = i
@@ -49,7 +57,7 @@ func Compile(edl cleanup.ContentEDL, durationFrames int) CompiledTimeline {
 	if durationFrames > lastSource {
 		in := m.SourceBoundaryToTimeline(lastSource)
 		out := m.SourceBoundaryToTimeline(durationFrames)
-		tl.Segments = append(tl.Segments, Segment{ID: segmentID(len(tl.Segments) + 1), SourceFrameIn: lastSource, SourceFrameOut: durationFrames, TimelineFrameIn: in, TimelineFrameOut: out})
+		tl.Segments = append(tl.Segments, newSegment(len(tl.Segments)+1, lastSource, durationFrames, in, out))
 	}
 	return tl
 }
@@ -77,4 +85,20 @@ func WriteCompiled(projectPath string, tl CompiledTimeline) error {
 
 func segmentID(n int) string {
 	return "seg_" + string(rune('A'+n-1))
+}
+
+func newSegment(n, sourceIn, sourceOut, timelineIn, timelineOut int) Segment {
+	return Segment{
+		ID:               segmentID(n),
+		SourceFrameIn:    sourceIn,
+		SourceFrameOut:   sourceOut,
+		TimelineFrameIn:  timelineIn,
+		TimelineFrameOut: timelineOut,
+		Provenance: FrameProvenance{
+			SourceFrameIn:    sourceIn,
+			SourceFrameOut:   sourceOut,
+			TimelineFrameIn:  timelineIn,
+			TimelineFrameOut: timelineOut,
+		},
+	}
 }

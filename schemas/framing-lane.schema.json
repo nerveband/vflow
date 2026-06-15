@@ -1,1 +1,43 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"framing lane","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "framing lane",
+  "type": "object",
+  "required": ["version", "compiled", "events"],
+  "properties": {
+    "version": {"const": "vflow-framing-lane/v1"},
+    "compiled": {"type": "boolean"},
+    "source_rate": {"type": "string"},
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "start_frame", "end_frame", "preset_id", "reason", "provenance"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^fr_[0-9]{6}$"},
+          "start_frame": {"type": "integer", "minimum": 0},
+          "end_frame": {"type": "integer", "minimum": 0},
+          "start_seconds": {"type": "number", "minimum": 0},
+          "end_seconds": {"type": "number", "minimum": 0},
+          "preset_id": {"type": "string", "minLength": 1},
+          "speaker_label": {"type": "string"},
+          "reason": {"type": "string", "minLength": 1},
+          "review_required": {"type": "boolean"},
+          "review_reasons": {"type": "array", "items": {"type": "string"}},
+          "provenance": {
+            "type": "object",
+            "required": ["source_frame_in", "source_frame_out"],
+            "properties": {
+              "source_media_id": {"type": "string"},
+              "source_word_ids": {"type": "array", "items": {"type": "string"}},
+              "source_frame_in": {"type": "integer", "minimum": 0},
+              "source_frame_out": {"type": "integer", "minimum": 0}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "framing policy",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "version": {"const": "vflow-framing-policy/v1"},
+    "min_dwell_frames": {"type": "integer", "minimum": 1},
+    "low_confidence_threshold": {"type": "number", "minimum": 0, "maximum": 1},
+    "wide_preset_id": {"type": "string", "minLength": 1},
+    "wide_reset_frames": {"type": "integer", "minimum": 1}
+  },
+  "additionalProperties": false
+}

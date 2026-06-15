@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 )
 
 type Rect struct {
@@ -39,12 +39,21 @@ func ParsePresets(raw []byte) (Presets, error) {
 }
 
 func (p Presets) Validate() error {
+	if p.SourceWidth <= 0 || p.SourceHeight <= 0 {
+		return fmt.Errorf("source dimensions must be positive")
+	}
+	if p.TargetAspect == "" {
+		return fmt.Errorf("target_aspect is required")
+	}
+	if len(p.Presets) == 0 {
+		return fmt.Errorf("at least one preset is required")
+	}
 	ids := map[string]bool{}
 	for _, preset := range p.Presets {
 		if preset.ID == "" {
 			return fmt.Errorf("preset id is required")
 		}
-		if strings.HasPrefix(preset.ID, "SPEAKER_") {
+		if looksLikeDiarizationLabel(preset.ID) || looksLikeDiarizationLabel(preset.Label) {
 			return fmt.Errorf("preset %s uses diarization label; use stable person/preset ids", preset.ID)
 		}
 		if ids[preset.ID] {
@@ -59,6 +68,20 @@ func (p Presets) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (p Presets) IDSet() map[string]bool {
+	ids := map[string]bool{}
+	for _, preset := range p.Presets {
+		ids[preset.ID] = true
+	}
+	return ids
+}
+
+var diarizationLabelPattern = regexp.MustCompile(`\b(?:SPEAKER[_-]?[A-Za-z0-9]+|speaker[_-]?\d+)\b`)
+
+func looksLikeDiarizationLabel(value string) bool {
+	return diarizationLabelPattern.MatchString(value)
 }
 
 func WritePresets(projectPath string, presets Presets) error {

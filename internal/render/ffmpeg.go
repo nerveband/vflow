@@ -43,8 +43,14 @@ func PreviewPlan(opts Options) Plan {
 	command = append(command,
 		"-i", opts.Input,
 		"-t", strconv.Itoa(opts.MaxSeconds),
+		"-map", "0:v:0",
+		"-map", "0:a?",
+		"-dn",
+		"-map_metadata", "-1",
+		"-map_chapters", "-1",
 		"-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
 		"-af", "afade=t=in:st=0:d=0.03,afade=t=out:st="+strconv.FormatFloat(fadeOutStart, 'f', 2, 64)+":d=0.03",
+		"-movflags", "+faststart",
 		opts.Output,
 	)
 	return Plan{Command: command, OutputPath: opts.Output, Target: opts.Target, Description: "ffmpeg preview render"}

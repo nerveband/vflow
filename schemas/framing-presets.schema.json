@@ -1,1 +1,55 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"framing presets","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "framing presets",
+  "type": "object",
+  "required": ["version", "source_width", "source_height", "target_aspect", "presets"],
+  "properties": {
+    "version": {"const": "vflow-framing-presets/v1"},
+    "source_width": {"type": "integer", "minimum": 1},
+    "source_height": {"type": "integer", "minimum": 1},
+    "target_aspect": {"type": "string", "minLength": 1},
+    "presets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "type", "crop_px"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "not": {
+              "anyOf": [
+                {"pattern": "\\bSPEAKER[_-]?[A-Za-z0-9]+\\b"},
+                {"pattern": "\\bspeaker[_-]?[0-9]+\\b"}
+              ]
+            }
+          },
+          "label": {
+            "type": "string",
+            "not": {
+              "anyOf": [
+                {"pattern": "\\bSPEAKER[_-]?[A-Za-z0-9]+\\b"},
+                {"pattern": "\\bspeaker[_-]?[0-9]+\\b"}
+              ]
+            }
+          },
+          "type": {"type": "string", "minLength": 1},
+          "crop_px": {
+            "type": "object",
+            "required": ["x", "y", "w", "h"],
+            "properties": {
+              "x": {"type": "integer", "minimum": 0},
+              "y": {"type": "integer", "minimum": 0},
+              "w": {"type": "integer", "minimum": 1},
+              "h": {"type": "integer", "minimum": 1}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

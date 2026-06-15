@@ -19,6 +19,11 @@ func TestValidatePresetsRejectsDiarizationLabels(t *testing.T) {
 	}
 	presets.Presets[0].ID = "SPEAKER_00"
 	if err := presets.Validate(); err == nil {
-		t.Fatalf("expected diarization label rejection")
+		t.Fatalf("expected numeric diarization label rejection")
+	}
+	presets.Presets[0].ID = "wide"
+	presets.Presets[0].Label = "SPEAKER_A"
+	if err := presets.Validate(); err == nil {
+		t.Fatalf("expected alpha diarization label rejection")
 	}
 }

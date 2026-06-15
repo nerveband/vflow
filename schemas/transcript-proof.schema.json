@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"vflow transcript proof","type":"object","required":["version","segments"],"properties":{"version":{"const":"vflow-transcript-proof/v1"},"segments":{"type":"array"},"render":{"type":"string"}}}

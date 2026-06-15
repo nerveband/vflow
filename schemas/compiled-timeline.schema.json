@@ -1,1 +1,39 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"compiled timeline","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "compiled timeline",
+  "type": "object",
+  "required": ["version", "duration_frames", "time_map", "segments"],
+  "properties": {
+    "version": {"const": "vflow-compiled-timeline/v1"},
+    "duration_frames": {"type": "integer", "minimum": 0},
+    "time_map": {"type": "object"},
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "source_frame_in", "source_frame_out", "timeline_frame_in", "timeline_frame_out", "provenance"],
+        "properties": {
+          "id": {"type": "string"},
+          "source_frame_in": {"type": "integer", "minimum": 0},
+          "source_frame_out": {"type": "integer", "minimum": 0},
+          "timeline_frame_in": {"type": "integer", "minimum": 0},
+          "timeline_frame_out": {"type": "integer", "minimum": 0},
+          "provenance": {
+            "type": "object",
+            "required": ["source_frame_in", "source_frame_out", "timeline_frame_in", "timeline_frame_out"],
+            "properties": {
+              "source_frame_in": {"type": "integer", "minimum": 0},
+              "source_frame_out": {"type": "integer", "minimum": 0},
+              "timeline_frame_in": {"type": "integer", "minimum": 0},
+              "timeline_frame_out": {"type": "integer", "minimum": 0}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "review_items": {"type": "array"}
+  },
+  "additionalProperties": false
+}

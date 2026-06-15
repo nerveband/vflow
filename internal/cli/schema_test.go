@@ -19,6 +19,10 @@ func TestSchemaValidateReportsCoverage(t *testing.T) {
 	if data["status"] != "valid" {
 		t.Fatalf("expected valid status, got %#v", data["status"])
 	}
+	artifactValidation := data["artifact_schema_validation"].(map[string]any)
+	if artifactValidation["status"] != "valid" || artifactValidation["checked"].(float64) == 0 {
+		t.Fatalf("expected artifact schemas to be validated, got %#v", artifactValidation)
+	}
 	if !strings.Contains(out, "nle export") {
 		t.Fatalf("schema output missing nle export:\n%s", out)
 	}

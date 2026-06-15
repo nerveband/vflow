@@ -16,7 +16,7 @@ func TestContractRejectsBannedAliases(t *testing.T) {
 
 func TestDefaultRegistryIncludesCoreCommands(t *testing.T) {
 	reg := DefaultRegistry()
-	for _, name := range []string{"project init", "media probe", "timeline compile", "nle export", "qa analyze"} {
+	for _, name := range []string{"project init", "media probe", "timeline compile", "render transcript-cut", "nle export", "qa analyze"} {
 		if _, ok := reg.Get(name); !ok {
 			t.Fatalf("missing command %q", name)
 		}

@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"vflow media sync map","type":"object","required":["version","reference_source_id","sources"],"properties":{"version":{"const":"vflow-media-sync-map/v1"},"reference_source_id":{"type":"string"},"transcript_to_reference_offset_seconds":{"type":"number"},"sources":{"type":"array"}}}

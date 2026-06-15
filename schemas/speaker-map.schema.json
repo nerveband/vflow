@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "speaker map",
+  "type": "object",
+  "required": ["version", "map"],
+  "properties": {
+    "version": {"const": "vflow-speaker-map/v1"},
+    "status": {"type": "string"},
+    "speaker_count": {"type": "integer", "minimum": 0},
+    "map": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1}
+    }
+  },
+  "additionalProperties": false
+}

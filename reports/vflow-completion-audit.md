@@ -52,3 +52,62 @@ This audit checks the active goal against current repo state and command output.
 ## Current Decision
 
 The CLI implementation is hardened past the 85-point target and all local/provider paths available in this environment were implemented and live-proven. The only remaining compatibility gap is broader real-editor NLE roundtrip fixture coverage.
+
+## 2026-06-15 Clip Sync Hardening Addendum
+
+Proven:
+
+- `vflow-media-sync-map/v1` is implemented and tested with explicit transcript, reference-source, and source-camera time mapping.
+- Audio waveform sync helpers are implemented in Go: mono 16k PCM ffmpeg extraction planning, RMS envelopes, normalized cross-correlation, confidence scoring, low-confidence validation warnings, drift helper, and waveform proof command planning.
+- Storage-aware `media extract-ranges` computes source seconds from transcript ranges through the sync map, estimates byte use, and extracts only requested local source-camera ranges with optional audio mapping, `-dn`, stripped metadata/chapters, H.264/AAC, `yuv420p`, and faststart.
+- `cut create` can write a transcript cut with resolved source/reference/transcript seconds.
+- `render transcript-cut --sync-map` resolves transcript-relative segments before ffmpeg planning.
+- `render verify-transcript` writes a local transcript proof report.
+- NLE sidecars carry `sync_map_ref` and optional source/reference/transcript frame provenance fields.
+
+Group 4 proof:
+
+- Source camera files were read from `/Volumes/Shams Drive/CAIR-GA 10 yr/Group 4 Current Board/Camera Source Files` as inputs only; all writes stayed under ignored `work/test-projects/cair-ga-group-4-current-board-social-30s`.
+- Known alignment was confirmed by command output: transcript `34:19` (`2059s`) maps to 12mm/9mm `40:15` (`2415s`) and 7mm `40:32` (`2432s`).
+- `media extract-ranges --commit` wrote only the needed local 30s range to `media/sync-ranges/group4_known_cta_30s-group4_7mm.mp4`.
+- `render transcript-cut --sync-map --commit` wrote `renders/group4-sync-proof-30s.mp4`.
+- `render verify` returned `status: valid`, `1920x1080`, duration `30.03`, H.264, one audio stream, 720 frames.
+- `OPENAI_API_KEY` was present; live OpenAI STT proof against the proof render wrote 82 words under `live-transcript-proof/transcript/`.
+
+Verification:
+
+- `go test ./...`: pass.
+- `go vet ./...`: pass.
+- `go run ./cmd/vflow schema --validate --format json --format-error json`: pass.
+- `go run ./cmd/vflow audit cli --format json --format-error json`: pass, score `100/100`.
+
+## 2026-06-15 Multi-Angle Sync Cut Addendum
+
+Additional proof:
+
+- Created `decisions/group4-sync-multiangle-ranges.json` with three transcript-selected ranges across 12mm, 9mm, and 7mm.
+- `media extract-ranges --commit` wrote local synced range clips under `media/sync-ranges-multiangle/` and `calibration/source-range-manifest-multiangle.json`.
+- `cut create --sync-map --commit` wrote `decisions/group4-sync-multiangle-cut.json`.
+- `render transcript-cut --sync-map --commit` wrote `renders/group4-sync-multiangle-social-30s.mp4`.
+- `render verify` returned `status: valid`, `1920x1080`, duration `30.03`, H.264, one audio stream, and 720 frames.
+- Generated a corrected natural LUT at `calibration/group4-natural-contrast-rfast.cube`; `color apply --commit` wrote `renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4`.
+- The graded render verified as `status: valid`, `1920x1080`, duration `30.03`, H.264, one audio stream, and 720 frames.
+- Visual comparison proof: `reports/frames/sync-multiangle-ungraded-vs-natural-graded-v2-contact-sheet.png`.
+- `render verify-transcript --commit` wrote `reports/group4-sync-multiangle-transcript-proof.json`.
+- Live OpenAI STT proof wrote 73 words to `live-transcript-proof-sync-multiangle/transcript/openai-transcription.json`; transcript text matched the intended three-part summary cut.
+- `render verify` now accepts `--project` and resolves relative render paths under the project, matching the rest of the render workflow.
+- The framing contract compiler slice now writes deterministic `decisions/framing-lane.json` and `review/review-queue.json` from approved presets, speaker map, policy, and word-frame artifacts while preserving dry-run-by-default behavior.
+- Framing validation rejects diarization-label preset IDs/labels, source-bound violations, unknown speaker-map presets, invalid word frame ranges, low-confidence fallback cases, overlap wide fallback cases, minimum-dwell review cases, and wide-reset insertion cases.
+
+Provider status:
+
+- `OPENAI_API_KEY` was present and live STT succeeded.
+- `GEMINI_API_KEY` was present, but Gemini returned `API key expired` / `API_KEY_INVALID`; live Gemini color/video QA is blocked until the key is rotated.
+
+Final verification after framing and render-verify patches:
+
+- `go test ./...`: pass.
+- `go vet ./...`: pass.
+- `go run ./cmd/vflow schema --validate --format json --format-error json`: pass, command count `60`, schema count `20`.
+- `go run ./cmd/vflow doctor --format json --format-error json`: pass; ffmpeg, ffprobe, `OPENAI_API_KEY`, and `GEMINI_API_KEY` detected.
+- `go run ./cmd/vflow audit cli --format json --format-error json`: pass, score `100/100`.

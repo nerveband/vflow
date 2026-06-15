@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"vflow source range manifest","type":"object","required":["version","ranges"],"properties":{"version":{"const":"vflow-source-range-manifest/v1"},"ranges":{"type":"array"},"estimated_bytes":{"type":"integer"}}}

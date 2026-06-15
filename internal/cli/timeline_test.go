@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -26,5 +27,22 @@ func TestCleanupApplyAndTimelineCompile(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "timeline", "compiled-timeline.json")); err != nil {
 		t.Fatalf("expected compiled timeline: %v", err)
+	}
+}
+
+func TestTimelineCompileRejectsMalformedContentEDL(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "decisions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "decisions", "content-edl.json"), []byte(`{"version":`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, errOut, code := runCLI(t, "timeline", "compile", "--project", dir, "--format", "json", "--format-error", "json")
+	if code != 4 {
+		t.Fatalf("expected validation failure, got %d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(errOut, `"code": "CONTENT_EDL_INVALID"`) {
+		t.Fatalf("expected CONTENT_EDL_INVALID, got %s", errOut)
 	}
 }

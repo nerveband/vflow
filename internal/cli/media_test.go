@@ -126,6 +126,59 @@ func TestMediaSamplesCommitRunsConfiguredFFmpeg(t *testing.T) {
 	}
 }
 
+func TestMediaExtractRangesResolvesProjectRelativePaths(t *testing.T) {
+	dir := t.TempDir()
+	writeSyncFixture(t, dir)
+
+	out, errOut, code := runCLI(t,
+		"media", "extract-ranges",
+		"--project", dir,
+		"--sync-map", "calibration/media-sync-map.json",
+		"--ranges", "decisions/ranges.json",
+		"--output-dir", "media/sync-ranges",
+		"--manifest", "calibration/range-manifest.json",
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		filepath.ToSlash(filepath.Join(dir, "media", "sync-ranges", "seg1-7mm.mp4")),
+		filepath.ToSlash(filepath.Join(dir, "calibration", "range-manifest.json")),
+		`"source_start_seconds": 2432`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestCutCreateResolvesProjectRelativePaths(t *testing.T) {
+	dir := t.TempDir()
+	writeSyncFixture(t, dir)
+
+	out, errOut, code := runCLI(t,
+		"cut", "create",
+		"--project", dir,
+		"--sync-map", "calibration/media-sync-map.json",
+		"--ranges", "decisions/ranges.json",
+		"--output", "decisions/cut.json",
+		"--commit",
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "decisions", "cut.json")); err != nil {
+		t.Fatalf("expected project-relative cut output: %v", err)
+	}
+	if !strings.Contains(out, `"source_timeline_offset": 373`) {
+		t.Fatalf("expected sync-resolved cut: %s", out)
+	}
+}
+
 func fakeCLIFFmpeg(t *testing.T, dir string) string {
 	t.Helper()
 	path := filepath.Join(dir, "ffmpeg")
@@ -141,4 +194,30 @@ printf fake > "$out"
 		t.Fatal(err)
 	}
 	return path
+}
+
+func writeSyncFixture(t *testing.T, dir string) {
+	t.Helper()
+	for _, subdir := range []string{"calibration", "decisions"} {
+		if err := os.MkdirAll(filepath.Join(dir, subdir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	syncMap := `{
+  "version": "vflow-media-sync-map/v1",
+  "method": "audio_xcorr_envelope",
+  "reference_source_id": "12mm",
+  "transcript_to_reference_offset_seconds": 356,
+  "sources": [
+    {"id": "12mm", "path": "12.mp4", "offset_from_reference_seconds": 0, "confidence": 1},
+    {"id": "7mm", "path": "7.mp4", "offset_from_reference_seconds": 17, "confidence": 0.9}
+  ]
+}`
+	ranges := `{"ranges":[{"id":"seg1","source_id":"7mm","transcript_start_seconds":2059,"transcript_end_seconds":2064,"text":"has your back"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "calibration", "media-sync-map.json"), []byte(syncMap), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "decisions", "ranges.json"), []byte(ranges), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }

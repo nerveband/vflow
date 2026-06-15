@@ -10,9 +10,23 @@ type ApplyPlan struct {
 
 func LUTApplyPlan(input, lut, output string) ApplyPlan {
 	return ApplyPlan{
-		Command: []string{"ffmpeg", "-y", "-i", input, "-vf", "lut3d=file=" + lut + ":interp=tetrahedral", output},
-		LUT:     lut,
-		Output:  output,
+		Command: []string{
+			"ffmpeg", "-y",
+			"-i", input,
+			"-map", "0:v:0",
+			"-map", "0:a?",
+			"-dn",
+			"-map_metadata", "-1",
+			"-map_chapters", "-1",
+			"-vf", "lut3d=file=" + lut + ":interp=tetrahedral",
+			"-c:v", "libx264",
+			"-pix_fmt", "yuv420p",
+			"-c:a", "aac",
+			"-movflags", "+faststart",
+			output,
+		},
+		LUT:    lut,
+		Output: output,
 	}
 }
 

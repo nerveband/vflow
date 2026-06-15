@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "review queue",
+  "type": "object",
+  "required": ["version", "items"],
+  "properties": {
+    "version": {"const": "vflow-review-queue/v1"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "code", "severity", "message", "event_id", "start_frame", "end_frame", "preset_id"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^rev_[0-9]{6}$"},
+          "code": {"type": "string", "minLength": 1},
+          "severity": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1},
+          "event_id": {"type": "string", "pattern": "^fr_[0-9]{6}$"},
+          "speaker_label": {"type": "string"},
+          "start_frame": {"type": "integer", "minimum": 0},
+          "end_frame": {"type": "integer", "minimum": 0},
+          "preset_id": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
