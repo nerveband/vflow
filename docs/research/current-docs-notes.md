@@ -41,12 +41,15 @@ Sources:
 - Google’s video understanding docs show uploading through the Files API for larger/reused videos and `generateContent` with uploaded file references.
 - Gemini model docs currently list `gemini-3.5-flash` as stable and `gemini-3.1-pro-preview` as preview.
 - Gemini release notes say Gemini 2.0 Flash models were shut down on 2026-06-01 and recommend `gemini-3.5-flash` or `gemini-3.1-flash-lite`.
+- Context7 checks against the official Go GenAI SDK also document `genai.NewClient` with `BackendGeminiAPI`, `Models.GenerateContent`, `Files.UploadFromPath`, `gemini-2.5-flash`, and `gemini-3-flash-preview` for file/video generation examples.
+- `vflow` should avoid a closed model allowlist. Accept explicit `gemini-*` model names plus stable aliases so current provider model names can be tested without a code change.
 
 Sources:
 
 - https://ai.google.dev/gemini-api/docs/video-understanding
 - https://ai.google.dev/gemini-api/docs/models
 - https://ai.google.dev/gemini-api/docs/changelog
+- Context7 `/googleapis/go-genai`, fetched 2026-06-15
 
 ## STT Providers
 

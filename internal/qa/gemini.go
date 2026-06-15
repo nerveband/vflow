@@ -16,6 +16,8 @@ import (
 
 const (
 	DefaultFastModel = "gemini-3.5-flash"
+	StableFastModel  = "gemini-2.5-flash"
+	VideoReviewModel = "gemini-3-flash-preview"
 	DeepReviewModel  = "gemini-3.1-pro-preview"
 )
 
@@ -43,30 +45,46 @@ type DoctorResult struct {
 }
 
 func NormalizeModel(model string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(model)) {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	normalized = strings.TrimPrefix(normalized, "models/")
+	switch normalized {
 	case "", "fast", "flash", DefaultFastModel:
 		return DefaultFastModel, nil
+	case "stable", "2.5 flash", "gemini 2.5 flash", StableFastModel:
+		return StableFastModel, nil
+	case "video", "video-fast", "3 flash", "gemini 3 flash", "gemini-3-flash", VideoReviewModel:
+		return VideoReviewModel, nil
 	case "3.1 pro", "gemini 3.1 pro", "gemini-3.1-pro", DeepReviewModel:
 		return DeepReviewModel, nil
 	default:
-		return "", fmt.Errorf("unknown Gemini model %q; valid alternatives: %s, %s", model, DefaultFastModel, DeepReviewModel)
+		if strings.HasPrefix(normalized, "gemini-") {
+			return normalized, nil
+		}
+		return "", fmt.Errorf("unknown Gemini model %q; use an alias like fast, stable, video, deep, or pass an explicit gemini-* model", model)
 	}
 }
 
 func Doctor(model string, live bool) (DoctorResult, error) {
+	key, source := APIKeyFromEnv()
+	return DoctorWithKey(model, live, key, source)
+}
+
+func DoctorWithKey(model string, live bool, key, source string) (DoctorResult, error) {
 	selected, err := NormalizeModel(model)
 	if err != nil {
 		return DoctorResult{}, err
 	}
-	key, source := APIKeyFromEnv()
 	res := DoctorResult{Provider: "gemini", OK: key != "", KeyPresent: key != "", SelectedModel: selected, Live: live}
-	if key != "" {
+	if source != "" {
 		res.KeySource = source
 	} else {
 		res.ErrorCode = "MISSING_API_KEY"
 	}
+	if key == "" {
+		res.ErrorCode = "MISSING_API_KEY"
+	}
 	if !live || key == "" {
-		res.ModelAvailable = selected == DefaultFastModel || selected == DeepReviewModel
+		res.ModelAvailable = selected == DefaultFastModel || selected == StableFastModel || selected == VideoReviewModel || selected == DeepReviewModel
 		return res, nil
 	}
 	models, err := ListModels(key)
@@ -83,6 +101,18 @@ func Doctor(model string, live bool) (DoctorResult, error) {
 	return res, nil
 }
 
+func APIKeyFromNamedEnv(name string) (string, string, error) {
+	trimmed := strings.TrimSpace(name)
+	if !validEnvName(trimmed) {
+		return "", "", fmt.Errorf("invalid environment variable name %q", name)
+	}
+	value := strings.TrimSpace(os.Getenv(trimmed))
+	if value == "" {
+		return "", "env:" + trimmed, nil
+	}
+	return value, "env:" + trimmed, nil
+}
+
 func APIKeyFromEnv() (string, string) {
 	for _, key := range []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"} {
 		value := strings.TrimSpace(os.Getenv(key))
@@ -91,6 +121,19 @@ func APIKeyFromEnv() (string, string) {
 		}
 	}
 	return "", ""
+}
+
+func validEnvName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for index, char := range name {
+		if char == '_' || char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' || index > 0 && char >= '0' && char <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func ListModels(apiKey string) ([]string, error) {

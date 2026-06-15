@@ -400,6 +400,26 @@ Proof:
 - OpenAI STT returned 73 words and matched the planned summary: CAIR as first line of defense, shield for the community, and an organization that has your back / will fight for you / protect you / empower that organization.
 - Gemini color review attempted live but returned `API key expired` with `API_KEY_INVALID`; rotate the key before using Gemini QA again.
 
+## 2026-06-15 Gemini Key Diagnostic
+
+Implemented:
+
+- `qa doctor`, `qa analyze`, and `color review` accept `--key-env` so multiple Gemini candidate keys can be tested by environment variable name without writing raw keys into the repo, command history, or reports.
+- Gemini model normalization now accepts the existing `fast`/`deep` aliases, SDK-documented `stable` (`gemini-2.5-flash`) and `video` (`gemini-3-flash-preview`) aliases, `models/gemini-*` IDs, and explicit `gemini-*` model names.
+- The direct REST adapter still matches the official GenAI SDK flow: API-key client, `models.generateContent`, Files API upload for videos, then `file_data` generation.
+
+Proof commands:
+
+```bash
+go run ./cmd/vflow qa doctor --provider gemini --key-env GEMINI_API_KEY --model gemini-2.5-flash --live --format json --format-error json
+cd work/tmp-gemini-sdk-check && go run .
+```
+
+Result:
+
+- Both the vflow REST path and the official Go SDK path reached Google and returned the same provider error for the currently exported `GEMINI_API_KEY`: `API key expired` with `API_KEY_INVALID`.
+- To test multiple candidate keys safely, export each key under a distinct variable and run `qa doctor --key-env` for each variable name.
+
 ## 2026-06-15 Framing Compiler Hardening
 
 Implemented:

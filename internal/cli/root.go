@@ -2057,7 +2057,7 @@ func qaCommand(opts *globalOptions) *cobra.Command {
 }
 
 func qaDoctorCommand(opts *globalOptions) *cobra.Command {
-	var provider, model string
+	var provider, model, keyEnv string
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "check QA provider capability",
@@ -2065,7 +2065,11 @@ func qaDoctorCommand(opts *globalOptions) *cobra.Command {
 			if provider != "gemini" {
 				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported QA provider", "Use provider gemini", false))
 			}
-			result, err := vqa.Doctor(model, opts.Live)
+			key, source, err := geminiAPIKey(keyEnv)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_KEY_ENV", err.Error(), "Pass an environment variable name such as GEMINI_API_KEY", false))
+			}
+			result, err := vqa.DoctorWithKey(model, opts.Live, key, source)
 			if err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("QA_DOCTOR_FAILED", err.Error(), "Check model name and GEMINI_API_KEY", true))
 			}
@@ -2074,11 +2078,12 @@ func qaDoctorCommand(opts *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&provider, "provider", "gemini", "QA provider")
 	cmd.Flags().StringVar(&model, "model", "", "Gemini model")
+	cmd.Flags().StringVar(&keyEnv, "key-env", "", "environment variable containing the Gemini API key")
 	return cmd
 }
 
 func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
-	var projectPath, provider, model, renderPath, uploadMode string
+	var projectPath, provider, model, renderPath, uploadMode, keyEnv string
 	cmd := &cobra.Command{
 		Use:   "analyze",
 		Short: "analyze rendered video with Gemini QA",
@@ -2107,7 +2112,10 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 				"prompt":      vqa.VideoQAPrompt,
 			}
 			if opts.Live {
-				key, _ := vqa.APIKeyFromEnv()
+				key, _, err := geminiAPIKey(keyEnv)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("INVALID_KEY_ENV", err.Error(), "Pass an environment variable name such as GEMINI_API_KEY", false))
+				}
 				if key == "" {
 					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "Gemini API key is not set", "Use GEMINI_API_KEY or GOOGLE_API_KEY via runtime env or Secret Gate; do not commit secrets", true))
 				}
@@ -2138,7 +2146,16 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&model, "model", "", "Gemini model")
 	cmd.Flags().StringVar(&renderPath, "render", "", "render path")
 	cmd.Flags().StringVar(&uploadMode, "upload", "files", "Gemini video upload mode: files or inline")
+	cmd.Flags().StringVar(&keyEnv, "key-env", "", "environment variable containing the Gemini API key")
 	return cmd
+}
+
+func geminiAPIKey(keyEnv string) (string, string, error) {
+	if strings.TrimSpace(keyEnv) != "" {
+		return vqa.APIKeyFromNamedEnv(keyEnv)
+	}
+	key, source := vqa.APIKeyFromEnv()
+	return key, source, nil
 }
 
 func colorCommand(opts *globalOptions) *cobra.Command {
@@ -2180,7 +2197,7 @@ func colorApplyCommand(opts *globalOptions) *cobra.Command {
 }
 
 func colorReviewCommand(opts *globalOptions) *cobra.Command {
-	var projectPath, provider, model, input string
+	var projectPath, provider, model, input, keyEnv string
 	cmd := &cobra.Command{
 		Use:   "review",
 		Short: "review color/exposure with optional Gemini analysis",
@@ -2201,7 +2218,10 @@ func colorReviewCommand(opts *globalOptions) *cobra.Command {
 				}},
 			}
 			if opts.Live && provider == "gemini" {
-				key, _ := vqa.APIKeyFromEnv()
+				key, _, err := geminiAPIKey(keyEnv)
+				if err != nil {
+					return writeStructuredError(cmd, opts, verrors.Validation("INVALID_KEY_ENV", err.Error(), "Pass an environment variable name such as GEMINI_API_KEY", false))
+				}
 				if key == "" {
 					return writeStructuredError(cmd, opts, verrors.Validation("MISSING_API_KEY", "Gemini API key is not set", "Use GEMINI_API_KEY or GOOGLE_API_KEY via runtime env or Secret Gate", true))
 				}
@@ -2231,6 +2251,7 @@ func colorReviewCommand(opts *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&provider, "provider", "gemini", "provider")
 	cmd.Flags().StringVar(&model, "model", "", "model")
 	cmd.Flags().StringVar(&input, "input", "", "input render path")
+	cmd.Flags().StringVar(&keyEnv, "key-env", "", "environment variable containing the Gemini API key")
 	cmd.Flags().String("mode", "best-practice", "review mode")
 	return cmd
 }
