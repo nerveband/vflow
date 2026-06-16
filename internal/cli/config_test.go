@@ -92,3 +92,24 @@ func TestAuthDoctorLiveRequiresCommit(t *testing.T) {
 		t.Fatalf("expected structured safety error, got:\n%s", errOut)
 	}
 }
+
+func TestDoctorReportsNLECapabilities(t *testing.T) {
+	out, errOut, code := runCLI(t, "doctor", "--local", "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("doctor failed: code=%d stdout=%s stderr=%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		`"local": true`,
+		`"nle":`,
+		`"targets":`,
+		`"resolve"`,
+		`"fcpxml"`,
+		`"exports_sidecars": true`,
+		`"missing_sidecar"`,
+		`"real_editor_fixture_gap"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor output missing %s in:\n%s", want, out)
+		}
+	}
+}

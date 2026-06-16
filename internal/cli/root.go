@@ -232,7 +232,15 @@ func doctorCommand(opts *globalOptions) *cobra.Command {
 			for _, key := range []string{"OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "ELEVENLABS_API_KEY", "SONIOX_API_KEY", "ASSEMBLYAI_API_KEY", "DEEPGRAM_API_KEY", "GLADIA_API_KEY", "ANTHROPIC_API_KEY", "HF_TOKEN"} {
 				env[key] = os.Getenv(key) != ""
 			}
-			return writeOutput(cmd, opts, "doctor", map[string]any{"status": "ok", "local": local, "tools": tools, "env_present": env})
+			nle := map[string]any{
+				"targets":                  []string{"resolve", "fcpxml", "premiere", "otio", "edl", "mlt", "sidecar"},
+				"exports_sidecars":         true,
+				"import_formats":           []string{"fcpxml", "premiere", "mlt", "otio", "edl"},
+				"resolve_project_packages": "blocked_with_export_hint",
+				"blocked_change_types":     []string{"color_grade", "complex_effect", "nested_timeline", "plugin_effect", "keyframed_transform", "missing_sidecar"},
+				"real_editor_fixture_gap":  "requires exported timelines from Resolve/FCP/Premiere/Shotcut/OTIO for exhaustive compatibility proof",
+			}
+			return writeOutput(cmd, opts, "doctor", map[string]any{"status": "ok", "local": local, "tools": tools, "env_present": env, "nle": nle})
 		},
 	}
 	cmd.Flags().BoolVar(&local, "local", false, "local-only checks")

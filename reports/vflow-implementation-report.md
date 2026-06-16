@@ -753,3 +753,24 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 Doctor NLE Capability Evidence
+
+Implemented:
+
+- `vflow doctor --local --format json` now reports NLE targets, import formats, sidecar export support, blocked roundtrip change types, Resolve package handling, and the remaining real-editor fixture proof gap.
+- CI now runs `doctor --local` to match the plan's local proof gate.
+- `Makefile` now includes `doctor-local` for explicit local-only checks.
+- Added regression coverage for NLE capability fields in doctor output.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'TestDoctorReportsNLECapabilities|TestAuthDoctor|TestSchemaValidateReportsCoverage' -v
+go run ./cmd/vflow doctor --local --format json --format-error json
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```
