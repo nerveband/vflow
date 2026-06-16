@@ -251,13 +251,56 @@ func auditCommand(opts *globalOptions) *cobra.Command {
 }
 
 func feedbackCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, message, category, source, outputPath string
 	cmd := &cobra.Command{Use: "feedback", Short: "Record operator feedback", RunE: func(cmd *cobra.Command, args []string) error {
+		message = strings.TrimSpace(message)
+		if message == "" {
+			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_FEEDBACK_MESSAGE", "missing --message", "Pass --message with the operator feedback to record", false))
+		}
+		category = strings.TrimSpace(category)
+		if category == "" {
+			category = "operator"
+		}
+		source = strings.TrimSpace(source)
+		if source == "" {
+			source = "operator"
+		}
+		if outputPath == "" {
+			outputPath = filepath.Join("reports", "feedback.jsonl")
+		}
+		artifact := projectRelativePath(projectPath, outputPath)
+		now := time.Now().UTC()
+		entry := map[string]any{
+			"version":    "vflow-feedback/v1",
+			"id":         "feedback_" + now.Format("20060102T150405.000000000Z"),
+			"created_at": now.Format(time.RFC3339Nano),
+			"category":   category,
+			"source":     source,
+			"message":    message,
+		}
 		status := "planned"
 		if opts.Commit {
+			raw, err := json.Marshal(entry)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("FEEDBACK_ENCODE_FAILED", err.Error(), "Check feedback fields", false))
+			}
+			if err := appendJSONLine(artifact, raw); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("FEEDBACK_WRITE_FAILED", err.Error(), "Check --project and --output permissions", false))
+			}
 			status = "recorded"
 		}
-		return writeOutput(cmd, opts, "feedback", map[string]any{"status": status})
+		return writeOutput(cmd, opts, "feedback", map[string]any{
+			"status":   status,
+			"artifact": filepath.ToSlash(artifact),
+			"entry":    entry,
+			"commit":   opts.Commit,
+		})
 	}}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project folder")
+	cmd.Flags().StringVar(&message, "message", "", "feedback message to record")
+	cmd.Flags().StringVar(&category, "category", "operator", "feedback category")
+	cmd.Flags().StringVar(&source, "source", "operator", "feedback source")
+	cmd.Flags().StringVar(&outputPath, "output", filepath.Join("reports", "feedback.jsonl"), "JSONL output path; relative paths are resolved under --project")
 	return cmd
 }
 
@@ -1771,6 +1814,21 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+func appendJSONLine(path string, raw []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.Write(append(raw, '\n')); err != nil {
+		return err
+	}
+	return nil
 }
 
 func firstNonEmptyString(values ...string) string {

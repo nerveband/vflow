@@ -468,3 +468,18 @@ Still intentionally outside this Go CLI slice:
 - Browser calibration UI / React crop editor.
 - Full Resolve transform automation.
 - Exhaustive real-editor NLE roundtrip fixtures.
+
+## 2026-06-16 Feedback Command Hardening
+
+Implemented:
+
+- `vflow feedback` now records a versioned `vflow-feedback/v1` JSONL entry instead of returning only a placeholder status.
+- Feedback writes are dry-run by default and append to `reports/feedback.jsonl` only with `--commit`.
+- The command accepts `--project`, `--message`, `--category`, `--source`, and project-relative `--output`.
+- Missing feedback messages return structured `vflow-error/v1` JSON with `MISSING_FEEDBACK_MESSAGE`.
+
+Verification:
+
+```bash
+go test ./internal/cli
+```
