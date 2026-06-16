@@ -238,3 +238,40 @@ func TestSourceMediaReviewSchemaDocumentsProbeContract(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectSchemaDocumentsRootContract(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "project.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("invalid project schema json: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if got := properties["version"].(map[string]any)["const"]; got != "vflow-project/v1" {
+		t.Fatalf("version const = %#v", got)
+	}
+	idPattern := properties["id"].(map[string]any)["pattern"]
+	if idPattern != "^[A-Za-z0-9][A-Za-z0-9_.-]*$" {
+		t.Fatalf("unexpected project id pattern: %#v", idPattern)
+	}
+	for _, field := range []string{"root", "created_at", "updated_at"} {
+		if _, ok := properties[field]; !ok {
+			t.Fatalf("project schema missing %s", field)
+		}
+	}
+	required := schema["required"].([]any)
+	for _, want := range []string{"version", "id", "root", "created_at", "updated_at"} {
+		found := false
+		for _, got := range required {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("project schema missing required field %q in %#v", want, required)
+		}
+	}
+}

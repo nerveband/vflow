@@ -766,7 +766,7 @@ func projectInitCommand(opts *globalOptions) *cobra.Command {
 			}
 			res, err := vproject.Init(path, id, opts.Commit)
 			if err != nil {
-				return err
+				return writeStructuredError(cmd, opts, verrors.Validation("PROJECT_INVALID", err.Error(), "Use a stable project id such as client_event_v1", false))
 			}
 			return writeOutput(cmd, opts, "project init", res)
 		},
@@ -787,7 +787,7 @@ func projectGetCommand(opts *globalOptions) *cobra.Command {
 			}
 			proj, err := vproject.Load(path)
 			if err != nil {
-				return err
+				return writeStructuredError(cmd, opts, verrors.Validation("PROJECT_INVALID", err.Error(), "Fix project.json or run project init in a clean folder", false))
 			}
 			return writeOutput(cmd, opts, "project get", proj)
 		},

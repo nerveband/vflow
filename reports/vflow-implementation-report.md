@@ -651,3 +651,26 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 Project Contract Hardening
+
+Implemented:
+
+- `schemas/project.schema.json` now describes the complete root `project.json` contract instead of requiring only version and ID.
+- Project contracts now require `vflow-project/v1`, a stable ID pattern, root path, `created_at`, and `updated_at`.
+- `project init` validates generated project contracts before planning or writing.
+- `project get` validates loaded project contracts after root defaulting and rejects malformed IDs or timestamps.
+- Project CLI errors for invalid contracts are now structured `PROJECT_INVALID` responses.
+- Added regression coverage for invalid IDs, invalid loaded contracts, timestamp ordering, structured CLI errors, and schema fields.
+
+Verification:
+
+```bash
+go test ./internal/project -v
+go test ./internal/project ./internal/cli -run 'Test(Project|SchemaValidate)' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```

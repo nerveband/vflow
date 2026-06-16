@@ -29,6 +29,9 @@ func Init(path, id string, commit bool) (InitResult, error) {
 	}
 	now := time.Now().UTC()
 	proj := Project{Version: "vflow-project/v1", ID: id, Root: abs, CreatedAt: now, UpdatedAt: now}
+	if err := Validate(proj); err != nil {
+		return InitResult{}, err
+	}
 	paths := ExpectedLayout()
 	res := InitResult{Status: "planned", Project: proj, PlannedPaths: append([]string(nil), paths...)}
 	if !commit {
@@ -86,6 +89,9 @@ func Load(path string) (Project, error) {
 	}
 	if proj.Root == "" {
 		proj.Root = abs
+	}
+	if err := Validate(proj); err != nil {
+		return Project{}, err
 	}
 	return proj, nil
 }

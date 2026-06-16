@@ -25,6 +25,22 @@ func TestProjectInitCreatesExpectedLayout(t *testing.T) {
 	}
 }
 
+func TestProjectInitRejectsInvalidIDWithStructuredError(t *testing.T) {
+	dir := t.TempDir()
+	out, errOut, code := runCLI(t, "project", "init", "--path", dir, "--id", "bad id", "--format", "json", "--format-error", "json")
+	if code == 0 {
+		t.Fatalf("expected project init failure, stdout=%s stderr=%s", out, errOut)
+	}
+	for _, want := range []string{`"code": "PROJECT_INVALID"`, "stable project id"} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("expected %q in stderr:\n%s", want, errOut)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "project.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no project.json to be written, stat err=%v", err)
+	}
+}
+
 func TestProjectIndexWritesSQLiteAndProvenance(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VFLOW_INDEX_PATH", filepath.Join(t.TempDir(), "index.sqlite"))

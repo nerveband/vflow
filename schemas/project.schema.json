@@ -1,1 +1,28 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"vflow project","type":"object","required":["version","id"]}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow project",
+  "type": "object",
+  "required": ["version", "id", "root", "created_at", "updated_at"],
+  "properties": {
+    "version": {
+      "const": "vflow-project/v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}
