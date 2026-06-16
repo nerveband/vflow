@@ -22,6 +22,7 @@ This audit checks the active goal against current repo state and command output.
 - Gemini provider responses are sanitized so transient `thoughtSignature` payloads are not emitted in committed CLI reports.
 - Command contract registry now includes all implemented plan-listed top-level/framing command surfaces that were previously missing from schema output: `feedback`, `framing propose`, and `framing review`.
 - NLE self-roundtrip fixture coverage now parses vflow exports back from EDL, FCPXML/Resolve, Premiere XMEML, MLT, and OTIO; all preserve `seg_A` identity for `clip_trim` and classify without unclassified changes.
+- The copied `references/Executive Directors.drp` fixture was inspected as local JSON switcher/project state, not a timeline interchange export; `nle import` now detects `.drp`/`.dra`/`.drt` and returns a structured `NLE_IMPORT_PARSE_FAILED` with the actionable instruction to export FCPXML, EDL, or OTIO from Resolve.
 - Copied CAIR-GA fixture probe recognized four copied 3840x2160 source-camera clips under `media/source-4k`.
 - Actual CAIR-GA 30-second CLI render wrote `work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/cair-ga-actual-30s.mp4` from copied source-camera media and verified as 1920x1080 H.264/AAC.
 - Ignored `work/` and `tmp/` proof artifacts were not tracked into the public repo.

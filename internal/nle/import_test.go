@@ -1,6 +1,9 @@
 package nle
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseImportDetectsFCPXMLRoundtripChanges(t *testing.T) {
 	result, err := ParseImport("roundtrip.fcpxml", []byte(roundtripFCPXML))
@@ -45,6 +48,13 @@ func TestParseImportsFromAllExportTargetsPreserveSegmentIdentity(t *testing.T) {
 				t.Fatalf("%s diff should classify exported fixture cleanly: %+v", target, diff)
 			}
 		})
+	}
+}
+
+func TestParseImportRejectsResolveProjectPackageWithActionableHint(t *testing.T) {
+	_, err := ParseImport("Executive Directors.drp", []byte(`{"version":1,"mixEffectBlocks":[{"source":2}]}`))
+	if err == nil || !strings.Contains(err.Error(), "export FCPXML, EDL, or OTIO from Resolve") {
+		t.Fatalf("expected actionable .drp rejection, got %v", err)
 	}
 }
 

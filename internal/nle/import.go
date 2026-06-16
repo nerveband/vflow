@@ -31,6 +31,8 @@ func ParseImport(input string, raw []byte) (ImportResult, error) {
 		err     error
 	)
 	switch result.Format {
+	case "resolve-project":
+		return result, fmt.Errorf("DaVinci Resolve .drp project packages are not timeline interchange files; export FCPXML, EDL, or OTIO from Resolve for vflow roundtrip import")
 	case "fcpxml", "premiere", "mlt", "resolve":
 		changes, err = parseXMLChanges(raw)
 	case "otio":
@@ -64,6 +66,8 @@ func detectFormat(input string, raw []byte) string {
 	}
 
 	switch filepath.Ext(lowerInput) {
+	case ".drp", ".dra", ".drt":
+		return "resolve-project"
 	case ".fcpxml":
 		return "fcpxml"
 	case ".xml":
