@@ -75,6 +75,44 @@ FCM: NON-DROP FRAME
 	}
 }
 
+func TestFCPXMLMarkerValueWithoutVflowIDDoesNotBecomeSegmentID(t *testing.T) {
+	result, err := ParseImport("editor-marker.fcpxml", []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<fcpxml version="1.11">
+  <library><event name="Roundtrip"><project name="vflow"><sequence duration="48/24s"><spine>
+    <asset-clip offset="0/24s" start="12/24s" duration="48/24s">
+      <marker start="0s" value="producer note"/>
+    </asset-clip>
+  </spine></sequence></project></event></library>
+</fcpxml>`))
+	if err != nil {
+		t.Fatalf("ParseImport returned error: %v", err)
+	}
+	if got := segmentForType(result.Changes, "marker_note"); got != "" {
+		t.Fatalf("plain marker value should not be treated as segment id, got %q", got)
+	}
+	diff := Classify(result)
+	if len(diff.SafeMerge) != 0 || !hasChangeType(diff.Blocked, "missing_sidecar") {
+		t.Fatalf("expected marker without vflow identity to block roundtrip apply: %+v", diff)
+	}
+}
+
+func TestFCPXMLMarkerValueWithVflowIDPreservesSegmentID(t *testing.T) {
+	result, err := ParseImport("editor-marker.fcpxml", []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<fcpxml version="1.11">
+  <library><event name="Roundtrip"><project name="vflow"><sequence duration="48/24s"><spine>
+    <asset-clip offset="0/24s" start="12/24s" duration="48/24s">
+      <marker start="0s" value="vflow:segment-id=seg_A"/>
+    </asset-clip>
+  </spine></sequence></project></event></library>
+</fcpxml>`))
+	if err != nil {
+		t.Fatalf("ParseImport returned error: %v", err)
+	}
+	if got := segmentForType(result.Changes, "marker_note"); got != "seg_A" {
+		t.Fatalf("expected vflow marker value to preserve segment id, got %q", got)
+	}
+}
+
 func hasChangeType(changes []Change, typ string) bool {
 	for _, change := range changes {
 		if change.Type == typ {

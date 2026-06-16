@@ -25,6 +25,7 @@ This audit checks the active goal against current repo state and command output.
 - NLE self-roundtrip fixture coverage now parses vflow exports back from EDL, FCPXML/Resolve, Premiere XMEML, MLT, and OTIO; all preserve `seg_A` identity for `clip_trim` and classify without unclassified changes.
 - NLE sidecars now have an explicit `schemas/nle-sidecar.schema.json` contract, schema validation includes it, and `nle export` rejects unsupported target typos instead of silently emitting a generic sidecar.
 - `nle diff` blocks identity-sensitive NLE changes that lack vflow segment IDs as `missing_sidecar`; raw editor EDL events without `* VFLOW-SEGMENT-ID` cannot be safe-merged.
+- FCPXML/Premiere XML marker values count as segment identity only when they explicitly contain `vflow:segment-id=...`; plain editor marker labels now trigger the missing-sidecar guardrail.
 - The copied `references/Executive Directors.drp` fixture was inspected as local JSON switcher/project state, not a timeline interchange export; `nle import` now detects `.drp`/`.dra`/`.drt` and returns a structured `NLE_IMPORT_PARSE_FAILED` with the actionable instruction to export FCPXML, EDL, or OTIO from Resolve.
 - Copied CAIR-GA fixture probe recognized four copied 3840x2160 source-camera clips under `media/source-4k`.
 - Actual CAIR-GA 30-second CLI render wrote `work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/cair-ga-actual-30s.mp4` from copied source-camera media and verified as 1920x1080 H.264/AAC.

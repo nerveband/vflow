@@ -734,3 +734,22 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 NLE Marker Identity Hardening
+
+Implemented:
+
+- FCPXML/Premiere XML marker `value` fields are no longer treated as vflow segment IDs unless they explicitly contain `vflow:segment-id=...`.
+- Plain producer/editor marker text without vflow identity now falls through to the missing-sidecar guardrail and is blocked from safe merge.
+- Added regression coverage for both plain marker values and explicit vflow marker values.
+
+Verification:
+
+```bash
+go test ./internal/nle -run 'Test(FCPXMLMarker|ParseImport|ParseEDL|ClassifyBlocks)' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```

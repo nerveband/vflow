@@ -125,7 +125,7 @@ func parseXMLChanges(raw []byte) ([]Change, error) {
 					captureSegmentText = "property"
 				}
 			case "marker":
-				segmentID := firstNonEmpty(segmentIDFromText(attrs["note"]), attrs["value"], currentSegment)
+				segmentID := firstNonEmpty(segmentIDFromText(attrs["note"]), segmentIDFromText(attrs["value"]), currentSegment)
 				changes = appendUniqueChange(changes, "marker_note", segmentID, "marker note changed in NLE timeline", 0.95)
 			case "adjust-volume", "volume":
 				changes = appendUniqueChange(changes, "audio_level", currentSegment, "audio level changed in NLE timeline", 0.90)
