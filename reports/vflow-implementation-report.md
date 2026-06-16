@@ -695,3 +695,23 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 NLE Sidecar Contract Hardening
+
+Implemented:
+
+- Added `schemas/nle-sidecar.schema.json` for the `exports/sidecars/<target>-vflow-sidecar.json` roundtrip contract.
+- `vflow schema --validate` now includes the NLE sidecar schema in artifact validation.
+- `nle export` now rejects unsupported or mistyped targets instead of silently emitting a generic sidecar for a bad target name.
+- Added regression coverage for valid NLE targets, unsupported target errors, schema inventory, and required sidecar segment mapping fields.
+
+Verification:
+
+```bash
+go test ./internal/nle ./internal/cli -run 'Test(ValidTarget|Export|NLE|Schema|GeminiVideoQA|NLESidecar)' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```

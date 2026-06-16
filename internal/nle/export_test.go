@@ -30,6 +30,19 @@ func TestExportSidecarIncludesRequiredRoundtripMetadata(t *testing.T) {
 	}
 }
 
+func TestValidTargetRejectsMistypedNLETargets(t *testing.T) {
+	for _, target := range []string{"edl", "fcpxml", "resolve", "premiere", "mlt", "otio", "sidecar"} {
+		if !ValidTarget(target) {
+			t.Fatalf("expected %q to be valid", target)
+		}
+	}
+	for _, target := range []string{"", "fcp", "fcpxm", "premiere-xml", "xml"} {
+		if ValidTarget(target) {
+			t.Fatalf("expected %q to be invalid", target)
+		}
+	}
+}
+
 func TestExportTextsContainInterchangeSegments(t *testing.T) {
 	segments := []Segment{{ID: "seg_A", SourceFrameIn: 12, SourceFrameOut: 60, TimelineFrameIn: 0, TimelineFrameOut: 48}}
 	opts := Options{SourceMediaID: "camera_a", SourceURL: "file:///camera-a.mp4", Rate: 24}

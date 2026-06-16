@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow NLE sidecar",
+  "type": "object",
+  "required": ["version", "target", "segments"],
+  "properties": {
+    "version": {
+      "const": "vflow-nle-sidecar/v1"
+    },
+    "target": {
+      "type": "string",
+      "enum": ["edl", "fcpxml", "resolve", "premiere", "mlt", "otio", "sidecar"]
+    },
+    "sync_map_ref": {
+      "type": "string"
+    },
+    "provenance": {
+      "type": "string"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "vflow_segment_id",
+          "source_media_id",
+          "source_frame_in",
+          "source_frame_out",
+          "timeline_frame_in",
+          "timeline_frame_out",
+          "marker_ids",
+          "export_target",
+          "export_version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "vflow_segment_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_media_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sync_map_ref": {
+            "type": "string"
+          },
+          "reference_frame_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reference_frame_out": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "transcript_frame_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "transcript_frame_out": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_frame_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_frame_out": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "timeline_frame_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "timeline_frame_out": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "content_edl_id": {
+            "type": "string"
+          },
+          "framing_preset_id": {
+            "type": "string"
+          },
+          "marker_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "export_target": {
+            "type": "string",
+            "enum": ["edl", "fcpxml", "resolve", "premiere", "mlt", "otio", "sidecar"]
+          },
+          "export_version": {
+            "const": "vflow-nle-export/v1"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

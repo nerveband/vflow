@@ -10,6 +10,15 @@ import (
 
 const exportVersion = "vflow-nle-export/v1"
 
+func ValidTarget(target string) bool {
+	switch target {
+	case "edl", "fcpxml", "resolve", "premiere", "mlt", "otio", "sidecar":
+		return true
+	default:
+		return false
+	}
+}
+
 func Export(opts Options, segments []Segment) ExportResult {
 	if opts.Target == "" {
 		opts.Target = "sidecar"

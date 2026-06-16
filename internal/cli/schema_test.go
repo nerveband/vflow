@@ -31,6 +31,9 @@ func TestSchemaValidateReportsCoverage(t *testing.T) {
 	if !strings.Contains(out, "provenance.schema.json") {
 		t.Fatalf("schema output missing provenance artifact schema:\n%s", out)
 	}
+	if !strings.Contains(out, "nle-sidecar.schema.json") {
+		t.Fatalf("schema output missing NLE sidecar artifact schema:\n%s", out)
+	}
 }
 
 func TestAgentContextMentionsLocalIndexArtifacts(t *testing.T) {
@@ -316,6 +319,48 @@ func TestGeminiVideoQASchemaDocumentsProviderWrapper(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("gemini video qa schema missing required field %q in %#v", want, required)
+		}
+	}
+}
+
+func TestNLESidecarSchemaDocumentsRoundtripMapping(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "nle-sidecar.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("invalid nle sidecar schema json: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if got := properties["version"].(map[string]any)["const"]; got != "vflow-nle-sidecar/v1" {
+		t.Fatalf("version const = %#v", got)
+	}
+	targetEnum := properties["target"].(map[string]any)["enum"].([]any)
+	for _, want := range []string{"edl", "fcpxml", "resolve", "premiere", "mlt", "otio", "sidecar"} {
+		found := false
+		for _, got := range targetEnum {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("target enum missing %q in %#v", want, targetEnum)
+		}
+	}
+	segments := properties["segments"].(map[string]any)
+	segmentRequired := segments["items"].(map[string]any)["required"].([]any)
+	for _, want := range []string{"id", "vflow_segment_id", "source_media_id", "source_frame_in", "source_frame_out", "timeline_frame_in", "timeline_frame_out", "marker_ids", "export_target", "export_version"} {
+		found := false
+		for _, got := range segmentRequired {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("sidecar segment missing required field %q in %#v", want, segmentRequired)
 		}
 	}
 }

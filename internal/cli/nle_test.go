@@ -193,6 +193,17 @@ func TestNLEDiffCanReadRawTimelineInput(t *testing.T) {
 	}
 }
 
+func TestNLEExportRejectsUnsupportedTarget(t *testing.T) {
+	project := t.TempDir()
+	_, errOut, code := runCLI(t, "nle", "export", "--project", project, "--target", "fcpxm", "--format", "json", "--format-error", "json")
+	if code != 4 {
+		t.Fatalf("expected validation failure, got code=%d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(errOut, `"code": "INVALID_ENUM"`) || !strings.Contains(errOut, "unsupported NLE export target") {
+		t.Fatalf("unexpected target error: %s", errOut)
+	}
+}
+
 const cliRoundtripFCPXML = `<?xml version="1.0" encoding="UTF-8"?>
 <fcpxml version="1.11">
   <library><event name="Roundtrip"><project name="vflow"><sequence duration="120/24s"><spine>

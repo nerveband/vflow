@@ -676,6 +676,7 @@ func artifactSchemaNames() []string {
 		"gemini-video-qa.schema.json",
 		"color-grade-report.schema.json",
 		"nle-diff.schema.json",
+		"nle-sidecar.schema.json",
 		"provenance.schema.json",
 		"render-report.schema.json",
 		"media-sync-map.schema.json",
@@ -2673,6 +2674,9 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 		Use:   "export",
 		Short: "export timeline to NLE interchange format",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !vnle.ValidTarget(target) {
+				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported NLE export target", "Use one of: edl, fcpxml, resolve, premiere, mlt, otio, sidecar", false))
+			}
 			outputPath := strings.TrimPrefix(deliver, "file:")
 			if outputPath == "" || outputPath == deliver {
 				outputPath = filepath.Join(projectPath, "exports", "timeline."+target)
