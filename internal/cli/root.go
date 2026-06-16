@@ -19,6 +19,7 @@ import (
 	"github.com/nerveband/vflow/internal/contract"
 	verrors "github.com/nerveband/vflow/internal/errors"
 	vframing "github.com/nerveband/vflow/internal/framing"
+	vframingsession "github.com/nerveband/vflow/internal/framing/session"
 	vindex "github.com/nerveband/vflow/internal/index"
 	vjobs "github.com/nerveband/vflow/internal/jobs"
 	vmedia "github.com/nerveband/vflow/internal/media"
@@ -1430,8 +1431,61 @@ func framingCommand(opts *globalOptions) *cobra.Command {
 	preset := &cobra.Command{Use: "preset", Short: "framing preset commands"}
 	preset.AddCommand(framingPresetImportCommand(opts), framingPresetValidateCommand(opts), framingPresetListCommand(opts))
 	parent.AddCommand(preset)
-	parent.AddCommand(framingMapSpeakersCommand(opts), framingProposeCommand(opts), framingCompileCommand(opts), framingReviewCommand(opts))
+	parent.AddCommand(framingCalibrateCommand(opts), framingMapSpeakersCommand(opts), framingProposeCommand(opts), framingCompileCommand(opts), framingReviewCommand(opts))
 	return parent
+}
+
+func framingCalibrateCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, source, listen, sessionTimeout, shutdownToken string
+	var openBrowser bool
+	wait := true
+	cmd := &cobra.Command{
+		Use:     "calibrate",
+		Aliases: []string{"crop", "zoom", "reframe", "frame", "crop-calibrate", "zoom-calibrate", "preset-calibrate"},
+		Short:   "start a local crop/zoom framing calibration session",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			timeout, err := time.ParseDuration(sessionTimeout)
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.Validation("CALIBRATE_TIMEOUT_INVALID", err.Error(), "Use a Go duration such as 30m", false))
+			}
+			ctx := cmd.Context()
+			server, result, verr := vframingsession.Start(ctx, vframingsession.Options{
+				ProjectPath:   projectPath,
+				Source:        source,
+				Listen:        listen,
+				Open:          openBrowser,
+				Wait:          false,
+				Timeout:       timeout,
+				ShutdownToken: shutdownToken,
+				CommitEnabled: opts.Commit,
+			})
+			if verr != nil {
+				return writeStructuredError(cmd, opts, verr)
+			}
+			if err := writeOutput(cmd, opts, "framing calibrate", result); err != nil {
+				_ = server.Shutdown(context.Background())
+				return err
+			}
+			if wait {
+				select {
+				case <-server.Done():
+				case <-time.After(timeout):
+					_ = server.Shutdown(context.Background())
+				case <-ctx.Done():
+					_ = server.Shutdown(context.Background())
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&source, "source", "", "project-relative source media path")
+	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:0", "local listen address")
+	cmd.Flags().BoolVar(&openBrowser, "open", false, "open the calibration UI in a browser")
+	cmd.Flags().BoolVar(&wait, "wait", true, "wait until shutdown or timeout")
+	cmd.Flags().StringVar(&sessionTimeout, "session-timeout", "30m", "session timeout")
+	cmd.Flags().StringVar(&shutdownToken, "shutdown-token", "", "optional token required by POST /api/shutdown")
+	return cmd
 }
 
 func framingMapSpeakersCommand(opts *globalOptions) *cobra.Command {

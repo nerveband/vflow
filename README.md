@@ -165,6 +165,10 @@ vflow transcript bakeoff
 vflow transcript search
 vflow cleanup review
 vflow cleanup apply
+vflow framing calibrate
+vflow framing crop
+vflow framing reframe
+vflow framing zoom
 vflow framing compile
 vflow timeline compile
 vflow render preview
@@ -223,6 +227,22 @@ go run ./cmd/vflow transcript import \
   --format json \
   --format-error json
 ```
+
+Calibrate approved framing presets:
+
+```bash
+go run ./cmd/vflow framing calibrate \
+  --project tmp/demo \
+  --source media/source.mp4 \
+  --listen 127.0.0.1:0 \
+  --open=false \
+  --session-timeout 30m \
+  --commit \
+  --format json \
+  --format-error json
+```
+
+The command serves an embedded local UI on `127.0.0.1`, returns JSON with `session_id`, `url`, health/status/shutdown URLs, artifact paths, port, PID, timeout, and shutdown-token presence, then waits until shutdown or timeout. `framing crop`, `framing zoom`, `framing reframe`, `framing frame`, `framing crop-calibrate`, `framing zoom-calibrate`, and `framing preset-calibrate` are aliases for the same session because calibration means approving the crop rectangles that later produce zoomed reframes. Agents can use `--wait=false` to return after session metadata is written under `tmp/sessions/`, or keep the process running and call `GET /api/state`, `POST /api/presets`, `POST /api/speaker-map`, `POST /api/policy`, `POST /api/commit?commit=true`, and `POST /api/shutdown`.
 
 Compile timeline artifacts:
 

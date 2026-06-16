@@ -29,6 +29,38 @@ func TestFramingPresetImportAndValidate(t *testing.T) {
 	}
 }
 
+func TestFramingCalibratePrintsManagedSessionJSON(t *testing.T) {
+	dir := t.TempDir()
+	if _, errOut, code := runCLI(t, "project", "init", "--path", dir, "--id", "framing_calibrate_test", "--commit", "--format", "json"); code != 0 {
+		t.Fatalf("project init failed: %d %s", code, errOut)
+	}
+	out, errOut, code := runCLI(t, "framing", "calibrate", "--project", dir, "--listen", "127.0.0.1:0", "--open=false", "--wait=false", "--session-timeout", "2s", "--shutdown-token", "test-token", "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("calibrate failed: %d %s", code, errOut)
+	}
+	for _, want := range []string{`"command": "framing calibrate"`, `"session_id":`, `"url": "http://127.0.0.1:`, `"health_url":`, `"status_url":`, `"shutdown_url":`, `"shutdown_token_present": true`, `"framing_presets":`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("calibrate output missing %s in:\n%s", want, out)
+		}
+	}
+}
+
+func TestFramingCalibrateCropZoomAliases(t *testing.T) {
+	for _, alias := range []string{"crop", "zoom", "reframe", "frame", "crop-calibrate", "zoom-calibrate", "preset-calibrate"} {
+		dir := t.TempDir()
+		if _, errOut, code := runCLI(t, "project", "init", "--path", dir, "--id", "framing_"+alias+"_test", "--commit", "--format", "json"); code != 0 {
+			t.Fatalf("project init failed for %s: %d %s", alias, code, errOut)
+		}
+		out, errOut, code := runCLI(t, "framing", alias, "--project", dir, "--listen", "127.0.0.1:0", "--open=false", "--wait=false", "--session-timeout", "2s", "--format", "json", "--format-error", "json")
+		if code != 0 {
+			t.Fatalf("framing %s failed: %d %s", alias, code, errOut)
+		}
+		if !strings.Contains(out, `"command": "framing calibrate"`) || !strings.Contains(out, `"session_id":`) {
+			t.Fatalf("alias %s did not return calibrate session JSON:\n%s", alias, out)
+		}
+	}
+}
+
 func TestFramingCompileBuildsLaneAndReviewQueueFromProjectArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	if _, errOut, code := runCLI(t, "project", "init", "--path", dir, "--id", "framing_compile_test", "--commit", "--format", "json"); code != 0 {

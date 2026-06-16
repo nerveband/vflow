@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>vflow framing calibrate</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="viewer" aria-label="Video preview and crop overlay">
+      <div class="stage">
+        <video id="sourceVideo" controls preload="metadata" playsinline></video>
+        <canvas id="overlay" width="1280" height="720" aria-label="Crop overlay"></canvas>
+      </div>
+      <div class="viewer-status">
+        <span id="commitBadge" class="badge">dry run</span>
+        <span id="frameBadge" class="badge">—</span>
+        <span id="helpHint" class="hint">Shift-drag preserves aspect ratio · Delete removes · Arrows nudge</span>
+      </div>
+    </section>
+    <aside class="panel">
+      <header class="panel-header">
+        <h1>Framing Calibration</h1>
+        <p id="sessionMeta"></p>
+      </header>
+
+      <section class="card" aria-labelledby="presetsHeading">
+        <div class="card-header">
+          <h2 id="presetsHeading">Presets</h2>
+          <button id="addPreset" type="button" class="btn btn-primary">Add preset</button>
+        </div>
+        <ul id="presetList" class="preset-list" role="listbox" aria-label="Framing presets"></ul>
+      </section>
+
+      <section class="card" aria-label="Selected preset inspector">
+        <div class="inspector">
+          <div class="inspector-row">
+            <strong id="selectedPreset">No preset selected</strong>
+            <button id="lockPreset" type="button" class="btn btn-small">Lock</button>
+          </div>
+          <span id="coords"></span>
+        </div>
+      </section>
+
+      <section class="card" aria-label="Toolbar">
+        <div class="toolbar">
+          <button id="togglePlay" type="button" class="btn">Play / Pause</button>
+          <button id="savePresets" type="button" class="btn btn-primary">Save presets</button>
+          <button id="commitArtifacts" type="button" class="btn btn-commit">Commit</button>
+          <button id="shutdown" type="button" class="btn btn-danger">Shutdown</button>
+        </div>
+      </section>
+
+      <section class="card" aria-label="JSON editors">
+        <label class="field">
+          <span class="field-label">Preset JSON</span>
+          <textarea id="presets" spellcheck="false"></textarea>
+        </label>
+        <label class="field">
+          <span class="field-label">Speaker map JSON</span>
+          <textarea id="speakerMap" spellcheck="false"></textarea>
+        </label>
+        <label class="field">
+          <span class="field-label">Policy JSON</span>
+          <textarea id="policy" spellcheck="false"></textarea>
+        </label>
+      </section>
+
+      <pre id="status" class="status" role="log" aria-live="polite"></pre>
+    </aside>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

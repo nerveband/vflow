@@ -19,6 +19,7 @@ type Preset struct {
 	ID     string `json:"id"`
 	Label  string `json:"label"`
 	Type   string `json:"type"`
+	Locked bool   `json:"locked,omitempty"`
 	CropPX Rect   `json:"crop_px"`
 }
 

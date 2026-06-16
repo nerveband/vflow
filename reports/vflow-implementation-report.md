@@ -24,6 +24,7 @@ Date: 2026-06-14
 - NLE import parses supported raw timelines into neutral change records, diff classifies safe/review/blocked buckets, and guarded apply writes `imports/applied-nle-changes.json` only when changes are safe to commit.
 - `nle accept` writes `imports/accepted-nle-changes.json` artifacts so needs-review changes can be applied only after explicit review acceptance.
 - Cleanup review and NLE diff can deliver HTML review artifacts.
+- `framing calibrate` starts a managed localhost crop/zoom/reframe calibration session with embedded HTML/CSS/JS, structured session JSON, project-scoped media serving, status persistence under `tmp/sessions/`, API validation, commit-gated writes, and programmatic shutdown. `framing crop`, `framing zoom`, `framing reframe`, `framing frame`, `framing crop-calibrate`, `framing zoom-calibrate`, and `framing preset-calibrate` are aliases for agent discoverability.
 - Color review writes `reports/color-grade-report.json` without requiring live Gemini, and live Gemini can enrich it when credentials work.
 - Public-repo support files: `AGENTS.md`, root `SKILL.md`, bundled workflow skill, schemas, CI, release workflow, GoReleaser config, install script, and research notes.
 - `upgrade` now checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage a release asset into a cache with `--commit`.
@@ -59,6 +60,15 @@ go run ./cmd/vflow schema --validate --format json
 go run ./cmd/vflow audit cli --format json
 go run ./cmd/vflow doctor --format json
 ```
+
+Framing calibrator proof commands:
+
+```bash
+go test ./internal/framing/session ./internal/cli
+go run ./cmd/vflow framing calibrate --project fixtures/project/basic --listen 127.0.0.1:0 --open=false --wait=false --session-timeout 30s --format json --format-error json
+```
+
+The calibrator returns `session_id`, `url`, `health_url`, `status_url`, `shutdown_url`, artifact paths, `port`, `pid`, timeout, and shutdown-token presence. Mutating API writes remain blocked unless the session was started with `--commit` and the API request carries commit intent.
 
 Hardening verification on 2026-06-14:
 

@@ -1,0 +1,347 @@
+* { box-sizing: border-box; }
+
+:root {
+  --bg: #0b0f12;
+  --surface: #141a20;
+  --surface-raised: #1c242c;
+  --border: #2a353e;
+  --border-subtle: #1f272e;
+  --text: #eef3f6;
+  --text-muted: #9aa8b2;
+  --accent: #7ee787;
+  --accent-dim: rgba(126, 231, 135, 0.14);
+  --warn: #f5c542;
+  --warn-dim: rgba(245, 197, 66, 0.12);
+  --danger: #ff7b72;
+  --danger-dim: rgba(255, 123, 114, 0.12);
+  --commit: #79c0ff;
+  --commit-dim: rgba(121, 192, 255, 0.12);
+  --radius: 8px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+  min-height: 100vh;
+}
+
+.viewer {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 12px;
+  padding: 16px;
+  background: #050607;
+  overflow: hidden;
+}
+
+.stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  background: #000;
+  box-shadow: var(--shadow);
+}
+
+video {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  display: block;
+}
+
+#overlay {
+  position: absolute;
+  inset: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+#overlay.playing {
+  pointer-events: none;
+}
+
+.viewer-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 28px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.badge.commit-enabled {
+  border-color: var(--commit);
+  background: var(--commit-dim);
+  color: var(--commit);
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-left: 1px solid var(--border);
+  padding: 18px;
+  overflow: auto;
+  background: var(--surface);
+}
+
+.panel-header h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+
+.panel-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  padding: 14px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.card-header h2 {
+  margin: 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.preset-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preset-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.preset-item:hover {
+  background: #232d36;
+}
+
+.preset-item[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.preset-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.preset-id {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.preset-meta {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.preset-lock {
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 120ms ease, border-color 120ms ease, transform 40ms ease;
+}
+
+.btn:hover {
+  background: #232d36;
+  border-color: #3d4b57;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.btn-primary:hover {
+  background: rgba(126, 231, 135, 0.22);
+}
+
+.btn-commit {
+  border-color: var(--commit);
+  background: var(--commit-dim);
+  color: var(--commit);
+}
+
+.btn-commit:hover {
+  background: rgba(121, 192, 255, 0.22);
+}
+
+.btn-danger {
+  border-color: var(--danger);
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: rgba(255, 123, 114, 0.22);
+}
+
+.btn-small {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.inspector {
+  display: grid;
+  gap: 8px;
+}
+
+.inspector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inspector strong {
+  font-size: 15px;
+}
+
+.inspector span {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: block;
+  margin: 12px 0;
+}
+
+.field:first-child { margin-top: 0; }
+.field:last-child { margin-bottom: 0; }
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.status {
+  white-space: pre-wrap;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  min-height: 80px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .panel { border-left: 0; border-top: 1px solid var(--border); }
+  video, #overlay { max-height: 50vh; }
+}
