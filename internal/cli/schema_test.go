@@ -151,3 +151,52 @@ func TestTranscriptSchemaDocumentsCanonicalWordsContract(t *testing.T) {
 		}
 	}
 }
+
+func TestContentEDLAndTimeMapSchemasDocumentFrameContracts(t *testing.T) {
+	contentRaw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "content-edl.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var contentSchema map[string]any
+	if err := json.Unmarshal(contentRaw, &contentSchema); err != nil {
+		t.Fatalf("invalid content EDL schema json: %v", err)
+	}
+	contentProperties := contentSchema["properties"].(map[string]any)
+	if got := contentProperties["version"].(map[string]any)["const"]; got != "vflow-content-edl/v1" {
+		t.Fatalf("content EDL version const = %#v", got)
+	}
+	deleteItems := contentProperties["delete_segments"].(map[string]any)["items"].(map[string]any)
+	deleteProperties := deleteItems["properties"].(map[string]any)
+	if got := deleteProperties["start_frame"].(map[string]any)["minimum"]; got != float64(0) {
+		t.Fatalf("delete start_frame minimum = %#v", got)
+	}
+	if got := deleteProperties["confidence"].(map[string]any)["maximum"]; got != float64(1) {
+		t.Fatalf("delete confidence maximum = %#v", got)
+	}
+
+	timeMapRaw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "time-map.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var timeMapSchema map[string]any
+	if err := json.Unmarshal(timeMapRaw, &timeMapSchema); err != nil {
+		t.Fatalf("invalid time map schema json: %v", err)
+	}
+	timeMapProperties := timeMapSchema["properties"].(map[string]any)
+	if got := timeMapProperties["duration_frames"].(map[string]any)["minimum"]; got != float64(0) {
+		t.Fatalf("duration_frames minimum = %#v", got)
+	}
+	deleteRangeRequired := timeMapProperties["deletes"].(map[string]any)["items"].(map[string]any)["required"].([]any)
+	for _, want := range []string{"start_frame", "end_frame"} {
+		found := false
+		for _, got := range deleteRangeRequired {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("time map delete range missing required field %q in %#v", want, deleteRangeRequired)
+		}
+	}
+}

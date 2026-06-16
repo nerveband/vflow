@@ -35,10 +35,16 @@ func ImportDeleteSegments(raw []byte, rate string) (ContentEDL, error) {
 			SourceEnd:   seg.End,
 		})
 	}
+	if err := ValidateContentEDL(edl); err != nil {
+		return ContentEDL{}, err
+	}
 	return edl, nil
 }
 
 func WriteContentEDL(projectPath string, edl ContentEDL) error {
+	if err := ValidateContentEDL(edl); err != nil {
+		return err
+	}
 	raw, err := json.MarshalIndent(edl, "", "  ")
 	if err != nil {
 		return err
@@ -56,7 +62,10 @@ func ReadContentEDL(projectPath string) (ContentEDL, error) {
 		return ContentEDL{}, err
 	}
 	var edl ContentEDL
-	return edl, json.Unmarshal(raw, &edl)
+	if err := json.Unmarshal(raw, &edl); err != nil {
+		return edl, err
+	}
+	return edl, ValidateContentEDL(edl)
 }
 
 func frameRate(rate string) float64 {

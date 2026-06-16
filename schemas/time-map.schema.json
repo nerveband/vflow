@@ -1,1 +1,31 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"time map","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "time map",
+  "type": "object",
+  "required": ["duration_frames", "deletes"],
+  "properties": {
+    "duration_frames": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "deletes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["start_frame", "end_frame"],
+        "properties": {
+          "start_frame": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_frame": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

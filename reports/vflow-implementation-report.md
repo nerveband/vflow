@@ -608,3 +608,25 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 Content EDL and Time Map Contract Hardening
+
+Implemented:
+
+- `schemas/content-edl.schema.json` now describes canonical `decisions/content-edl.json` with version, rate, and half-open delete segments.
+- `schemas/time-map.schema.json` now describes generated `decisions/time-map.json` with duration frames and delete ranges.
+- Added content EDL validation before importing, reading, or writing cleanup decisions.
+- Validation now requires `vflow-content-edl/v1`, frame rate, stable delete IDs, non-negative start frames, `end_frame > start_frame`, confidence values between 0 and 1, and non-overlapping delete ranges.
+- `vflow cleanup apply` now reports invalid delete decisions as structured `CONTENT_EDL_INVALID` and does not write `content-edl.json`.
+- Added regression coverage for invalid ranges, overlapping deletes, structured CLI errors, and content/time-map schema fields.
+
+Verification:
+
+```bash
+go test ./internal/cleanup ./internal/cli -run 'Test(ImportDelete|ValidateContent|Cleanup|Timeline|SchemaValidate|ContentEDL)' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```

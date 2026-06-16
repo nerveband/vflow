@@ -30,6 +30,26 @@ func TestCleanupApplyAndTimelineCompile(t *testing.T) {
 	}
 }
 
+func TestCleanupApplyRejectsInvalidDeleteRange(t *testing.T) {
+	dir := t.TempDir()
+	deletePath := filepath.Join(dir, "delete_segments.json")
+	if err := os.WriteFile(deletePath, []byte(`[{"start":2.0,"end":1.0,"reason":"bad","confidence":0.91}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runCLI(t, "cleanup", "apply", "--project", dir, "--input", deletePath, "--rate", "30/1", "--commit", "--format", "json", "--format-error", "json")
+	if code == 0 {
+		t.Fatalf("expected invalid cleanup failure, stdout=%s stderr=%s", out, errOut)
+	}
+	for _, want := range []string{`"code": "CONTENT_EDL_INVALID"`, "end_frame must be greater than start_frame"} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("expected %q in stderr:\n%s", want, errOut)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "decisions", "content-edl.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no content-edl.json to be written, stat err=%v", err)
+	}
+}
+
 func TestTimelineCompileRejectsMalformedContentEDL(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "decisions"), 0o755); err != nil {

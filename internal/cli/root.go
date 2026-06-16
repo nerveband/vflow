@@ -1313,7 +1313,7 @@ func cleanupApplyCommand(opts *globalOptions) *cobra.Command {
 			}
 			edl, err := vcleanup.ImportDeleteSegments(raw, rate)
 			if err != nil {
-				return err
+				return writeStructuredError(cmd, opts, verrors.Validation("CONTENT_EDL_INVALID", err.Error(), "Fix delete segment ranges, confidence values, and input shape", false))
 			}
 			status := "planned"
 			if opts.Commit {
