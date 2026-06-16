@@ -464,13 +464,33 @@ func profileUseCommand(opts *globalOptions) *cobra.Command {
 
 func authCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "auth", Short: "auth commands"}
-	parent.AddCommand(&cobra.Command{Use: "doctor", Short: "check provider auth", RunE: func(cmd *cobra.Command, args []string) error {
-		env := map[string]bool{}
-		for _, key := range []string{"OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "ELEVENLABS_API_KEY", "SONIOX_API_KEY", "ASSEMBLYAI_API_KEY", "DEEPGRAM_API_KEY", "GLADIA_API_KEY", "ANTHROPIC_API_KEY", "HF_TOKEN"} {
-			env[key] = os.Getenv(key) != ""
+	var provider, model string
+	doctor := &cobra.Command{Use: "doctor", Short: "check provider auth", RunE: func(cmd *cobra.Command, args []string) error {
+		if opts.Live && !opts.Commit {
+			return writeStructuredError(cmd, opts, verrors.Safety("live auth checks require --commit", "Pass --live --commit to call provider auth/model endpoints"))
 		}
-		return writeOutput(cmd, opts, "auth doctor", map[string]any{"status": "checked", "live": opts.Live, "env_present": env, "secrets_redacted": true})
-	}})
+		results, err := authDoctorResults(provider, model, opts.Live)
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", err.Error(), "Use --provider all, gemini, openai, elevenlabs, soniox, assemblyai, deepgram, gladia, anthropic, huggingface, or local", false))
+		}
+		status := "checked"
+		for _, result := range results {
+			if result["status"] == "missing_key" {
+				status = "degraded"
+				break
+			}
+		}
+		return writeOutput(cmd, opts, "auth doctor", map[string]any{
+			"status":           status,
+			"live":             opts.Live,
+			"provider":         provider,
+			"providers":        results,
+			"secrets_redacted": true,
+		})
+	}}
+	doctor.Flags().StringVar(&provider, "provider", "all", "provider to check: all, gemini, openai, elevenlabs, soniox, assemblyai, deepgram, gladia, anthropic, huggingface, local")
+	doctor.Flags().StringVar(&model, "model", "", "provider model to validate when supported")
+	parent.AddCommand(doctor)
 	return parent
 }
 
@@ -3079,6 +3099,133 @@ func providerCapabilities(provider string) []string {
 		return []string{"import", "no_api_key"}
 	default:
 		return nil
+	}
+}
+
+func authDoctorResults(provider, model string, live bool) ([]map[string]any, error) {
+	names, err := authProviderNames(provider)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]map[string]any, 0, len(names))
+	for _, name := range names {
+		result := authProviderResult(name, model, live)
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func authProviderNames(provider string) ([]string, error) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "", "all":
+		return []string{"openai", "elevenlabs", "soniox", "assemblyai", "deepgram", "gladia", "gemini", "anthropic", "huggingface", "local"}, nil
+	case "hf", "huggingface":
+		return []string{"huggingface"}, nil
+	case "gemini", "openai", "elevenlabs", "soniox", "assemblyai", "deepgram", "gladia", "anthropic", "local", "plain-text", "generic-words":
+		return []string{strings.ToLower(strings.TrimSpace(provider))}, nil
+	default:
+		return nil, fmt.Errorf("unsupported auth provider %q", provider)
+	}
+}
+
+func authProviderResult(provider, model string, live bool) map[string]any {
+	envVars := authProviderEnvVars(provider)
+	envPresent := make(map[string]bool, len(envVars))
+	keyPresent := len(envVars) == 0
+	keySource := ""
+	for _, env := range envVars {
+		present := os.Getenv(env) != ""
+		envPresent[env] = present
+		if present && keySource == "" {
+			keyPresent = true
+			keySource = "env:" + env
+		}
+	}
+	status := "ready"
+	if !keyPresent {
+		status = "missing_key"
+	}
+	result := map[string]any{
+		"provider":      provider,
+		"status":        status,
+		"key_present":   keyPresent,
+		"env_vars":      envVars,
+		"env_present":   envPresent,
+		"capabilities":  authProviderCapabilities(provider),
+		"live_checked":  false,
+		"quota_safe":    !live,
+		"secret_policy": "env_reference_only",
+	}
+	if keySource != "" {
+		result["key_source"] = keySource
+	}
+	if defaultModel := authProviderDefaultModel(provider); defaultModel != "" {
+		result["default_model"] = defaultModel
+	}
+	if provider == "gemini" {
+		key, source := vqa.APIKeyFromEnv()
+		doctor, err := vqa.DoctorWithKey(model, live, key, source)
+		if err != nil {
+			result["status"] = "failed"
+			result["error"] = err.Error()
+			result["retryable"] = true
+			return result
+		}
+		result["status"] = "ready"
+		if !doctor.KeyPresent {
+			result["status"] = "missing_key"
+		}
+		result["key_present"] = doctor.KeyPresent
+		result["selected_model"] = doctor.SelectedModel
+		result["model_available"] = doctor.ModelAvailable
+		result["live_checked"] = live && doctor.KeyPresent
+		if doctor.KeySource != "" {
+			result["key_source"] = doctor.KeySource
+		}
+		if len(doctor.AvailableModels) > 0 {
+			result["available_models"] = doctor.AvailableModels
+		}
+	}
+	return result
+}
+
+func authProviderEnvVars(provider string) []string {
+	switch provider {
+	case "gemini":
+		return []string{"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"}
+	case "anthropic":
+		return []string{"ANTHROPIC_API_KEY"}
+	case "huggingface":
+		return []string{"HF_TOKEN", "HUGGINGFACE_TOKEN"}
+	case "local", "plain-text", "generic-words":
+		return nil
+	default:
+		if env := providerEnv(provider); env != "" {
+			return []string{env}
+		}
+		return nil
+	}
+}
+
+func authProviderCapabilities(provider string) []string {
+	switch provider {
+	case "gemini":
+		return []string{"video_qa", "files_api", "model_listing", "color_review"}
+	case "anthropic":
+		return []string{"agent_suggestions", "text_review"}
+	case "huggingface":
+		return []string{"local_diarization_models", "gated_model_access"}
+	default:
+		return providerCapabilities(provider)
+	}
+}
+
+func authProviderDefaultModel(provider string) string {
+	switch provider {
+	case "gemini":
+		return vqa.DefaultFastModel
+	default:
+		return defaultTranscriptModel(provider)
 	}
 }
 

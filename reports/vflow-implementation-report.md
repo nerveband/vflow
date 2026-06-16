@@ -497,3 +497,20 @@ Verification:
 ```bash
 go test ./internal/cli -run 'TestNLE' -v
 ```
+
+## 2026-06-16 Auth Doctor Provider Matrix Hardening
+
+Implemented:
+
+- `vflow auth doctor` now supports `--provider` and `--model`.
+- Provider-specific checks cover `openai`, `elevenlabs`, `soniox`, `assemblyai`, `deepgram`, `gladia`, `gemini`, `anthropic`, `huggingface`, and local/import providers.
+- Missing keys degrade to structured capability output instead of failing the whole command.
+- Live auth/model checks require `--live --commit`; Gemini live checks reuse model listing through the existing QA doctor path.
+- Output reports env var names, key presence, capability metadata, default models, and `secrets_redacted: true` without printing secret values.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'Test(AuthDoctor|Profile|Config)' -v
+go run ./cmd/vflow auth doctor --provider elevenlabs --format json --format-error json
+```
