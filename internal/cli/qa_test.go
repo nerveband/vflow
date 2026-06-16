@@ -56,6 +56,41 @@ func TestQAAnalyzeDryRunDefaultsToFilesUpload(t *testing.T) {
 	if !strings.Contains(out, `"upload": "files"`) {
 		t.Fatalf("expected files upload mode: %s", out)
 	}
+	if !strings.Contains(out, `"version": "vflow-gemini-video-qa/v1"`) {
+		t.Fatalf("expected QA report version: %s", out)
+	}
+}
+
+func TestWriteGeminiQAReportWrapsProviderResponse(t *testing.T) {
+	project := t.TempDir()
+	reportPath := filepath.Join(project, "reports", "gemini-video-qa.json")
+	data := map[string]any{
+		"status":            "analyzed",
+		"provider":          "gemini",
+		"model":             "gemini-3.5-flash",
+		"render":            "renders/rough-preview.mp4",
+		"upload":            "inline",
+		"report_path":       filepath.ToSlash(reportPath),
+		"prompt":            "review",
+		"provider_response": json.RawMessage(`{"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}`),
+	}
+	if err := writeGeminiQAReport(reportPath, data); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"version": "vflow-gemini-video-qa/v1"`,
+		`"status": "analyzed"`,
+		`"provider_response": {`,
+		`"candidates": [`,
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("report missing %s in:\n%s", want, raw)
+		}
+	}
 }
 
 func TestQAAnalyzeAppendReviewQueueDryRunDoesNotWrite(t *testing.T) {

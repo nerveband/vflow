@@ -1,1 +1,76 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"gemini video qa","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gemini video qa",
+  "type": "object",
+  "required": [
+    "version",
+    "status",
+    "provider",
+    "model",
+    "render",
+    "upload",
+    "report_path",
+    "prompt",
+    "provider_response"
+  ],
+  "properties": {
+    "version": {
+      "const": "vflow-gemini-video-qa/v1"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "analyzed"]
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["gemini"]
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "render": {
+      "type": "string",
+      "minLength": 1
+    },
+    "upload": {
+      "type": "string",
+      "enum": ["files", "inline"]
+    },
+    "report_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "uploaded_file": {
+      "type": "object",
+      "required": ["name", "uri", "mime_type"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "provider_response": true,
+    "proposed_review_items": {
+      "type": "array"
+    },
+    "review_queue_path": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

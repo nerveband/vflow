@@ -2179,6 +2179,7 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 			}
 			reportPath := filepath.Join(projectPath, "reports", "gemini-video-qa.json")
 			data := map[string]any{
+				"version":     "vflow-gemini-video-qa/v1",
 				"status":      "planned",
 				"provider":    "gemini",
 				"model":       selected,
@@ -2224,8 +2225,9 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 					}
 				}
 				if opts.Commit {
-					_ = os.MkdirAll(filepath.Dir(reportPath), 0o755)
-					_ = os.WriteFile(reportPath, append(sanitized, '\n'), 0o644)
+					if err := writeGeminiQAReport(reportPath, data); err != nil {
+						return writeStructuredError(cmd, opts, verrors.External("GEMINI_QA_REPORT_WRITE_FAILED", err.Error(), "Check project report directory permissions", false))
+					}
 				}
 			}
 			if appendReviewQueue && data["proposed_review_items"] == nil {
@@ -2251,6 +2253,22 @@ func geminiAPIKey(keyEnv string) (string, string, error) {
 	}
 	key, source := vqa.APIKeyFromEnv()
 	return key, source, nil
+}
+
+func writeGeminiQAReport(reportPath string, data map[string]any) error {
+	report := map[string]any{}
+	for key, value := range data {
+		report[key] = value
+	}
+	report["version"] = "vflow-gemini-video-qa/v1"
+	raw, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(reportPath, append(raw, '\n'), 0o644)
 }
 
 func reviewItemsFromQAResponse(raw json.RawMessage) []vframing.ReviewItem {

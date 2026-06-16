@@ -275,3 +275,47 @@ func TestProjectSchemaDocumentsRootContract(t *testing.T) {
 		}
 	}
 }
+
+func TestGeminiVideoQASchemaDocumentsProviderWrapper(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "gemini-video-qa.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("invalid gemini video qa schema json: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if got := properties["version"].(map[string]any)["const"]; got != "vflow-gemini-video-qa/v1" {
+		t.Fatalf("version const = %#v", got)
+	}
+	uploadEnum := properties["upload"].(map[string]any)["enum"].([]any)
+	for _, want := range []string{"files", "inline"} {
+		found := false
+		for _, got := range uploadEnum {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("upload enum missing %q in %#v", want, uploadEnum)
+		}
+	}
+	if _, ok := properties["provider_response"]; !ok {
+		t.Fatalf("schema missing provider_response")
+	}
+	required := schema["required"].([]any)
+	for _, want := range []string{"version", "status", "provider", "model", "render", "upload", "report_path", "prompt", "provider_response"} {
+		found := false
+		for _, got := range required {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("gemini video qa schema missing required field %q in %#v", want, required)
+		}
+	}
+}

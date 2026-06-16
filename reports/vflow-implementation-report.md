@@ -674,3 +674,24 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 Gemini QA Report Contract Hardening
+
+Implemented:
+
+- `schemas/gemini-video-qa.schema.json` now describes the vflow-owned `reports/gemini-video-qa.json` wrapper instead of accepting any object.
+- `vflow qa analyze` now includes `version: vflow-gemini-video-qa/v1` in planned/analyzed output.
+- Committed live QA reports now persist vflow metadata plus raw Gemini output under `provider_response`, instead of writing raw provider JSON as the whole report.
+- The wrapper records provider, model, render path, upload mode, report path, prompt, optional uploaded file metadata, optional review queue refs, and the provider response.
+- Added regression coverage for dry-run version output, wrapped provider response writes, and schema fields.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'TestQA|TestWriteGemini|TestGeminiVideoQA|TestSchemaValidate' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```
