@@ -51,6 +51,32 @@ func TestNLEImportWritesArtifactAndDiffDeliversReviewHTML(t *testing.T) {
 	}
 }
 
+func TestNLEImportResolvesProjectRelativeInput(t *testing.T) {
+	project := t.TempDir()
+	input := filepath.Join(project, "exports", "timeline.fcpxml")
+	if err := os.MkdirAll(filepath.Dir(input), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(input, []byte(cliRoundtripFCPXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCLI(t, "nle", "import", "--project", project, "--input", filepath.Join("exports", "timeline.fcpxml"), "--commit", "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("nle import failed: code=%d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"format": "fcpxml"`) || !strings.Contains(out, `"status": "parsed"`) {
+		t.Fatalf("unexpected nle import output: %s", out)
+	}
+	importRaw, err := os.ReadFile(filepath.Join(project, "imports", "nle-import.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(importRaw), filepath.ToSlash(filepath.Join(project, "exports", "timeline.fcpxml"))) {
+		t.Fatalf("import artifact should record resolved input path: %s", importRaw)
+	}
+}
+
 func TestNLEApplyCommitRefusesBlockedChanges(t *testing.T) {
 	project := t.TempDir()
 	input := filepath.Join(project, "timeline.fcpxml")

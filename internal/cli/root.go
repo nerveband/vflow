@@ -2417,11 +2417,12 @@ func nleImportCommand(opts *globalOptions) *cobra.Command {
 		if input == "" {
 			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass --input timeline file", false))
 		}
-		raw, err := os.ReadFile(input)
+		inputPath := resolveProjectInputPath(projectPath, input)
+		raw, err := os.ReadFile(inputPath)
 		if err != nil {
 			return writeStructuredError(cmd, opts, verrors.External("NLE_IMPORT_READ_FAILED", err.Error(), "Check --input path", false))
 		}
-		data, err := vnle.ParseImport(input, raw)
+		data, err := vnle.ParseImport(inputPath, raw)
 		if err != nil {
 			return writeStructuredError(cmd, opts, verrors.Validation("NLE_IMPORT_PARSE_FAILED", err.Error(), "Use a supported EDL, FCPXML, XMEML, MLT, or OTIO file", false))
 		}
@@ -2470,13 +2471,7 @@ func nleDiffCommand(opts *globalOptions) *cobra.Command {
 }
 
 func loadNLEImport(projectPath, input string) (vnle.ImportResult, error) {
-	path := input
-	if !filepath.IsAbs(path) {
-		projectRelative := filepath.Join(projectPath, input)
-		if _, err := os.Stat(projectRelative); err == nil {
-			path = projectRelative
-		}
-	}
+	path := resolveProjectInputPath(projectPath, input)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return vnle.ImportResult{}, err
@@ -2492,13 +2487,7 @@ func loadNLEImport(projectPath, input string) (vnle.ImportResult, error) {
 }
 
 func loadNLEDiff(projectPath, input string) (vnle.DiffResult, error) {
-	path := input
-	if !filepath.IsAbs(path) {
-		projectRelative := filepath.Join(projectPath, input)
-		if _, err := os.Stat(projectRelative); err == nil {
-			path = projectRelative
-		}
-	}
+	path := resolveProjectInputPath(projectPath, input)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return vnle.DiffResult{}, err
@@ -2519,13 +2508,7 @@ func loadNLEDiff(projectPath, input string) (vnle.DiffResult, error) {
 }
 
 func loadNLEAcceptedReview(projectPath, input string) (vnle.AcceptedReview, error) {
-	path := input
-	if !filepath.IsAbs(path) {
-		projectRelative := filepath.Join(projectPath, input)
-		if _, err := os.Stat(projectRelative); err == nil {
-			path = projectRelative
-		}
-	}
+	path := resolveProjectInputPath(projectPath, input)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return vnle.AcceptedReview{}, err
@@ -2538,6 +2521,17 @@ func loadNLEAcceptedReview(projectPath, input string) (vnle.AcceptedReview, erro
 		return vnle.AcceptedReview{}, fmt.Errorf("not an accepted NLE review artifact")
 	}
 	return accepted, nil
+}
+
+func resolveProjectInputPath(projectPath, input string) string {
+	path := input
+	if !filepath.IsAbs(path) {
+		projectRelative := filepath.Join(projectPath, input)
+		if _, err := os.Stat(projectRelative); err == nil {
+			path = projectRelative
+		}
+	}
+	return path
 }
 
 func writeRoundtripReviewHTML(path string, data vnle.DiffResult) error {

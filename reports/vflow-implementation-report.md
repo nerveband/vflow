@@ -483,3 +483,17 @@ Verification:
 ```bash
 go test ./internal/cli
 ```
+
+## 2026-06-16 NLE Import Path Hardening
+
+Implemented:
+
+- `vflow nle import --project <dir> --input <relative-path>` now resolves timeline input paths relative to the project folder.
+- The same project-relative resolver is shared by NLE import, diff, accepted-review loading, and apply paths.
+- Added regression coverage for importing `exports/timeline.fcpxml` through `--project`.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'TestNLE' -v
+```
