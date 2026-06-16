@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -50,12 +52,17 @@ func TestUpgradeDryRunReportsNoRelease(t *testing.T) {
 func TestUpgradeCommitStagesMatchingAsset(t *testing.T) {
 	var server *httptest.Server
 	assetName := fmt.Sprintf("vflow_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	archive := []byte("archive")
+	sum := sha256.Sum256(archive)
+	checksums := hex.EncodeToString(sum[:]) + "  " + assetName + "\n"
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/latest":
 			_, _ = w.Write([]byte(fmt.Sprintf(`{"tag_name":"v1.2.3","assets":[{"name":%q,"browser_download_url":"%s/asset"},{"name":"checksums.txt","browser_download_url":"%s/checksums"}]}`, assetName, server.URL, server.URL)))
 		case "/asset":
-			_, _ = w.Write([]byte("archive"))
+			_, _ = w.Write(archive)
+		case "/checksums":
+			_, _ = w.Write([]byte(checksums))
 		default:
 			http.NotFound(w, r)
 		}
@@ -67,7 +74,7 @@ func TestUpgradeCommitStagesMatchingAsset(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
 	}
-	for _, want := range []string{`"status": "staged"`, assetName, `"checksum_asset": "checksums.txt"`} {
+	for _, want := range []string{`"status": "staged"`, assetName, `"checksum_asset": "checksums.txt"`, `"checksum_verified": true`} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %s in:\n%s", want, out)
 		}

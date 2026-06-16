@@ -36,6 +36,14 @@ go build -o bin/vflow ./cmd/vflow
 bin/vflow version --format json
 ```
 
+Install from GitHub Releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nerveband/vflow/main/scripts/install.sh | sh
+```
+
+The installer downloads the latest release archive, verifies `checksums.txt`, installs `vflow` into `${VFLOW_BIN_DIR:-$HOME/.local/bin}`, and backs up an existing binary as `vflow.bak`.
+
 Common development gates:
 
 ```bash
@@ -411,7 +419,7 @@ Important docs:
 
 ## Release And Upgrade
 
-The repo includes GoReleaser configuration and an `upgrade` command.
+The repo includes GoReleaser configuration, a checksum-verifying install script, and an `upgrade` command.
 
 Check public release metadata:
 
@@ -428,6 +436,18 @@ go run ./cmd/vflow upgrade \
   --format json \
   --format-error json
 ```
+
+Install the latest verified release into a PATH directory:
+
+```bash
+vflow upgrade \
+  --install-dir "$HOME/.local/bin" \
+  --commit \
+  --format json \
+  --format-error json
+```
+
+`upgrade --commit --install-dir` downloads the matching OS/architecture release archive, verifies it against `checksums.txt`, extracts the `vflow` binary, backs up any existing binary as `vflow.bak`, and atomically installs the replacement.
 
 ## Current Known Gap
 

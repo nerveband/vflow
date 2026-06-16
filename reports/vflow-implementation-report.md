@@ -825,3 +825,24 @@ Verification:
 go test ./internal/cli -run 'Test(SchemaValidateReportsCoverage|AuditReportSchema)' -v
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 Install And Self-Update Hardening
+
+Implemented:
+
+- Replaced the placeholder installer with `scripts/install.sh`, which downloads the matching release archive, verifies `checksums.txt`, installs to `${VFLOW_BIN_DIR:-$HOME/.local/bin}`, and backs up any existing binary.
+- `vflow upgrade --commit --install-dir <dir>` now downloads the latest matching release archive, verifies SHA256 from release checksums, extracts the binary, backs up an existing installation, and atomically installs the replacement.
+- Added regression coverage for checksum-verified staging, checksum mismatch rejection, and install backup behavior.
+
+Verification:
+
+```bash
+go test ./internal/update -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+make doctor-local
+VFLOW_VERSION=v0.1.4 VFLOW_BIN_DIR="$(mktemp -d)" scripts/install.sh
+```

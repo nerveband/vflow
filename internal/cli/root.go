@@ -584,14 +584,14 @@ func artifactsCommand(opts *globalOptions) *cobra.Command {
 }
 
 func upgradeCommand(opts *globalOptions) *cobra.Command {
-	var repo, metadataURL, cacheDir string
+	var repo, metadataURL, cacheDir, installDir string
 	cmd := &cobra.Command{Use: "upgrade", Short: "Upgrade vflow", RunE: func(cmd *cobra.Command, args []string) error {
 		ctx, cancel, err := commandContext(opts.Timeout)
 		if err != nil {
 			return writeStructuredError(cmd, opts, verrors.Validation("INVALID_TIMEOUT", err.Error(), "Use a Go duration such as 30s, 5m, or 20m", false))
 		}
 		defer cancel()
-		upgradeOpts := vupdate.Options{Repo: repo, MetadataURL: metadataURL, CacheDir: cacheDir, Current: Version, Commit: Commit}
+		upgradeOpts := vupdate.Options{Repo: repo, MetadataURL: metadataURL, CacheDir: cacheDir, InstallDir: installDir, Current: Version, Commit: Commit}
 		report, err := vupdate.Check(ctx, upgradeOpts)
 		if err != nil {
 			return writeStructuredError(cmd, opts, verrors.External("UPGRADE_CHECK_FAILED", err.Error(), "Check network access, GitHub release metadata, or --metadata-url", true))
@@ -607,6 +607,7 @@ func upgradeCommand(opts *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&repo, "repo", "github.com/nerveband/vflow", "GitHub repository")
 	cmd.Flags().StringVar(&metadataURL, "metadata-url", "", "override latest release metadata URL")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "upgrade asset cache directory")
+	cmd.Flags().StringVar(&installDir, "install-dir", "", "install verified binary into this directory after staging")
 	return cmd
 }
 
