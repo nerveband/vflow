@@ -20,6 +20,7 @@ This audit checks the active goal against current repo state and command output.
 - Gemini Files API upload path is implemented, tested, and live-proven; `qa analyze --upload files` uploaded video, polled to `ACTIVE`, wrote `work/live-provider-proof/gemini/reports/gemini-video-qa.json`, and returned one candidate.
 - Live Gemini-backed `color review` completed and wrote `work/live-provider-proof/gemini/reports/color-grade-report.json`.
 - Gemini provider responses are sanitized so transient `thoughtSignature` payloads are not emitted in committed CLI reports.
+- Command contract registry now includes all implemented plan-listed top-level/framing command surfaces that were previously missing from schema output: `feedback`, `framing propose`, and `framing review`.
 - Copied CAIR-GA fixture probe recognized four copied 3840x2160 source-camera clips under `media/source-4k`.
 - Actual CAIR-GA 30-second CLI render wrote `work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/cair-ga-actual-30s.mp4` from copied source-camera media and verified as 1920x1080 H.264/AAC.
 - Ignored `work/` and `tmp/` proof artifacts were not tracked into the public repo.
