@@ -2162,6 +2162,7 @@ func qaDoctorCommand(opts *globalOptions) *cobra.Command {
 
 func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, provider, model, renderPath, uploadMode, keyEnv string
+	var appendReviewQueue bool
 	cmd := &cobra.Command{
 		Use:   "analyze",
 		Short: "analyze rendered video with Gemini QA",
@@ -2215,10 +2216,24 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 				sanitized := vqa.SanitizeProviderResponse(raw)
 				data["provider_response"] = sanitized
 				data["status"] = "analyzed"
+				if appendReviewQueue {
+					items := reviewItemsFromQAResponse(sanitized)
+					data["proposed_review_items"] = items
+					data["review_queue_path"] = filepath.ToSlash(filepath.Join(projectPath, "review", "review-queue.json"))
+					if opts.Commit && len(items) > 0 {
+						if err := appendReviewQueueItems(projectPath, items); err != nil {
+							return writeStructuredError(cmd, opts, verrors.External("REVIEW_QUEUE_WRITE_FAILED", err.Error(), "Check project review directory permissions", false))
+						}
+					}
+				}
 				if opts.Commit {
 					_ = os.MkdirAll(filepath.Dir(reportPath), 0o755)
 					_ = os.WriteFile(reportPath, append(sanitized, '\n'), 0o644)
 				}
+			}
+			if appendReviewQueue && data["proposed_review_items"] == nil {
+				data["proposed_review_items"] = []vframing.ReviewItem{}
+				data["review_queue_path"] = filepath.ToSlash(filepath.Join(projectPath, "review", "review-queue.json"))
 			}
 			return writeOutput(cmd, opts, "qa analyze", data)
 		},
@@ -2229,6 +2244,7 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&renderPath, "render", "", "render path")
 	cmd.Flags().StringVar(&uploadMode, "upload", "files", "Gemini video upload mode: files or inline")
 	cmd.Flags().StringVar(&keyEnv, "key-env", "", "environment variable containing the Gemini API key")
+	cmd.Flags().BoolVar(&appendReviewQueue, "append-review-queue", false, "append high-confidence QA observations to review/review-queue.json with --commit")
 	return cmd
 }
 
@@ -2238,6 +2254,167 @@ func geminiAPIKey(keyEnv string) (string, string, error) {
 	}
 	key, source := vqa.APIKeyFromEnv()
 	return key, source, nil
+}
+
+func reviewItemsFromQAResponse(raw json.RawMessage) []vframing.ReviewItem {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil
+	}
+	candidates := collectQAObservations(value)
+	items := make([]vframing.ReviewItem, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.confidence < 0.75 {
+			continue
+		}
+		endFrame := candidate.endFrame
+		if endFrame < candidate.startFrame+1 {
+			endFrame = candidate.startFrame + 1
+		}
+		items = append(items, vframing.ReviewItem{
+			ID:         fmt.Sprintf("rev_%06d", len(items)+1),
+			Code:       firstNonEmptyString(candidate.code, "qa_observation"),
+			Severity:   "needs_human_review",
+			Message:    firstNonEmptyString(candidate.message, "High-confidence QA observation needs review."),
+			EventID:    "fr_000000",
+			StartFrame: candidate.startFrame,
+			EndFrame:   endFrame,
+			PresetID:   "qa_video_output",
+		})
+	}
+	return items
+}
+
+type qaObservation struct {
+	code       string
+	message    string
+	confidence float64
+	startFrame int64
+	endFrame   int64
+}
+
+func collectQAObservations(value any) []qaObservation {
+	out := []qaObservation{}
+	switch typed := value.(type) {
+	case map[string]any:
+		if obs, ok := qaObservationFromMap(typed); ok {
+			out = append(out, obs)
+		}
+		for key, child := range typed {
+			if key == "text" {
+				if text, ok := child.(string); ok {
+					text = strings.TrimSpace(text)
+					if strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[") {
+						var nested any
+						if err := json.Unmarshal([]byte(text), &nested); err == nil {
+							out = append(out, collectQAObservations(nested)...)
+						}
+					}
+				}
+			}
+			out = append(out, collectQAObservations(child)...)
+		}
+	case []any:
+		for _, child := range typed {
+			out = append(out, collectQAObservations(child)...)
+		}
+	}
+	return out
+}
+
+func qaObservationFromMap(value map[string]any) (qaObservation, bool) {
+	confidence, ok := numberField(value, "confidence")
+	if !ok {
+		return qaObservation{}, false
+	}
+	message := firstNonEmptyString(stringField(value, "message"), stringField(value, "observation"), stringField(value, "issue"), stringField(value, "description"))
+	if message == "" {
+		return qaObservation{}, false
+	}
+	code := firstNonEmptyString(stringField(value, "code"), stringField(value, "type"), stringField(value, "category"))
+	startFrame, startOK := intField(value, "start_frame")
+	endFrame, endOK := intField(value, "end_frame")
+	if !startOK {
+		if seconds, ok := numberField(value, "start_seconds"); ok {
+			startFrame = int64(seconds * 30)
+		} else if seconds, ok := numberField(value, "time_seconds"); ok {
+			startFrame = int64(seconds * 30)
+		}
+	}
+	if !endOK {
+		if seconds, ok := numberField(value, "end_seconds"); ok {
+			endFrame = int64(seconds * 30)
+		} else {
+			endFrame = startFrame + 30
+		}
+	}
+	if endFrame <= startFrame {
+		endFrame = startFrame + 1
+	}
+	return qaObservation{code: sanitizeReviewCode(code), message: message, confidence: confidence, startFrame: startFrame, endFrame: endFrame}, true
+}
+
+func appendReviewQueueItems(projectPath string, items []vframing.ReviewItem) error {
+	path := filepath.Join(projectPath, "review", "review-queue.json")
+	queue := vframing.ReviewQueue{Version: "vflow-review-queue/v1", Items: []vframing.ReviewItem{}}
+	if raw, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(raw, &queue); err != nil {
+			return err
+		}
+		if queue.Version == "" {
+			queue.Version = "vflow-review-queue/v1"
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	for _, item := range items {
+		item.ID = fmt.Sprintf("rev_%06d", len(queue.Items)+1)
+		queue.Items = append(queue.Items, item)
+	}
+	raw, err := json.MarshalIndent(queue, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(raw, '\n'), 0o644)
+}
+
+func stringField(value map[string]any, key string) string {
+	if raw, ok := value[key].(string); ok {
+		return strings.TrimSpace(raw)
+	}
+	return ""
+}
+
+func numberField(value map[string]any, key string) (float64, bool) {
+	switch raw := value[key].(type) {
+	case float64:
+		return raw, true
+	case int:
+		return float64(raw), true
+	case json.Number:
+		number, err := raw.Float64()
+		return number, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func intField(value map[string]any, key string) (int64, bool) {
+	number, ok := numberField(value, key)
+	return int64(number), ok
+}
+
+func sanitizeReviewCode(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	code = strings.ReplaceAll(code, " ", "_")
+	code = strings.ReplaceAll(code, "-", "_")
+	if code == "" {
+		return "qa_observation"
+	}
+	return "qa_" + strings.TrimPrefix(code, "qa_")
 }
 
 func colorCommand(opts *globalOptions) *cobra.Command {

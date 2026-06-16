@@ -514,3 +514,19 @@ Verification:
 go test ./internal/cli -run 'Test(AuthDoctor|Profile|Config)' -v
 go run ./cmd/vflow auth doctor --provider elevenlabs --format json --format-error json
 ```
+
+## 2026-06-16 QA Review Queue Hardening
+
+Implemented:
+
+- `vflow qa analyze` now supports `--append-review-queue`.
+- Dry-run returns `proposed_review_items` and `review_queue_path` without writing.
+- Live Gemini responses can be parsed for high-confidence JSON observations, including JSON embedded in Gemini text parts.
+- Only observations with confidence `>= 0.75` become human-review items.
+- With `--commit`, proposed items append to `review/review-queue.json` with stable sequential IDs; timeline and framing contracts are not modified.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'TestQA|TestReviewItems|TestAppendReviewQueue' -v
+```
