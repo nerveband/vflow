@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,5 +29,64 @@ func TestColorReviewCommitWritesReportWithoutLiveProvider(t *testing.T) {
 	}
 	if !strings.Contains(out, `"status": "written"`) || !strings.Contains(out, "color-grade-report.json") {
 		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestColorApplyCommitRecordsColorInRenderReport(t *testing.T) {
+	project := t.TempDir()
+	input := filepath.Join(project, "renders", "rough-preview.mp4")
+	if err := os.MkdirAll(filepath.Dir(input), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(input, []byte("placeholder"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reportPath := filepath.Join(project, "reports", "render-report.json")
+	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(reportPath, []byte(`{"version":"vflow-render-report/v1","status":"rendered","render_path":"renders/rough-preview.mp4","command":["ffmpeg"],"target":"youtube_16x9"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lutPath := filepath.Join(project, "calibration", "look.cube")
+	lutRaw := []byte("TITLE \"test\"\nLUT_3D_SIZE 2\n0 0 0\n0 0 1\n0 1 0\n0 1 1\n1 0 0\n1 0 1\n1 1 0\n1 1 1\n")
+	if err := os.MkdirAll(filepath.Dir(lutPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lutPath, lutRaw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runCLI(t,
+		"color", "apply",
+		"--project", project,
+		"--input", input,
+		"--lut", lutPath,
+		"--deliver", "file:renders/rough-preview-graded.mp4",
+		"--intent", "final",
+		"--qa-report", "reports/gemini-video-qa.json",
+		"--ffmpeg-path", "true",
+		"--commit",
+		"--format", "json",
+	)
+	if code != 0 {
+		t.Fatalf("color apply failed: code=%d stdout=%s stderr=%s", code, out, errOut)
+	}
+	raw, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(lutRaw)
+	for _, want := range []string{
+		`"color"`,
+		`"ungraded_render_path": "` + filepath.ToSlash(input) + `"`,
+		`"graded_render_path": "` + filepath.ToSlash(filepath.Join(project, "renders", "rough-preview-graded.mp4")) + `"`,
+		`"lut_sha256": "` + fmt.Sprintf("%x", sum) + `"`,
+		`"ffmpeg_filtergraph": "lut3d=file=` + filepath.ToSlash(lutPath) + `:interp=tetrahedral"`,
+		`"intent": "final"`,
+		`"reports/gemini-video-qa.json"`,
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("render report missing %s in:\n%s", want, raw)
+		}
 	}
 }

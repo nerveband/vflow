@@ -530,3 +530,19 @@ Verification:
 ```bash
 go test ./internal/cli -run 'TestQA|TestReviewItems|TestAppendReviewQueue' -v
 ```
+
+## 2026-06-16 Color Render Report Hardening
+
+Implemented:
+
+- `vflow color apply` now supports `--project`, `--intent`, `--qa-report`, and `--ffmpeg-path`.
+- Committed LUT renders update `reports/render-report.json` with a separate `color` object.
+- The render report records ungraded render path, graded render path, LUT path, LUT SHA-256, ffmpeg filtergraph, color warnings, QA report refs, and preview/final intent.
+- Color metadata stays in the render report and does not modify timeline or framing contracts.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'TestColor|TestRender' -v
+go test ./internal/color ./internal/render
+```

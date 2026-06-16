@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -2417,6 +2418,66 @@ func sanitizeReviewCode(code string) string {
 	return "qa_" + strings.TrimPrefix(code, "qa_")
 }
 
+func updateRenderReportColor(reportPath, ungradedPath, gradedPath, lutPath string, lutRaw []byte, plan vcolor.ApplyPlan, intent, qaReport string) error {
+	report := map[string]any{
+		"version": "vflow-render-report/v1",
+		"status":  "color_applied",
+	}
+	warnings := []string{}
+	if raw, err := os.ReadFile(reportPath); err == nil {
+		if err := json.Unmarshal(raw, &report); err != nil {
+			return err
+		}
+	} else if os.IsNotExist(err) {
+		warnings = append(warnings, "render_report_created_from_color_apply_without_existing_preview_report")
+	} else {
+		return err
+	}
+	if report["version"] == nil {
+		report["version"] = "vflow-render-report/v1"
+	}
+	if report["status"] == nil {
+		report["status"] = "color_applied"
+	}
+	lutSum := sha256.Sum256(lutRaw)
+	filtergraph := ""
+	for i, token := range plan.Command {
+		if token == "-vf" && i+1 < len(plan.Command) {
+			filtergraph = plan.Command[i+1]
+			break
+		}
+	}
+	if intent == "" {
+		intent = "preview"
+	}
+	colorData := map[string]any{
+		"ungraded_render_path": filepath.ToSlash(ungradedPath),
+		"graded_render_path":   filepath.ToSlash(gradedPath),
+		"lut_path":             filepath.ToSlash(lutPath),
+		"lut_sha256":           fmt.Sprintf("%x", lutSum),
+		"ffmpeg_filtergraph":   filtergraph,
+		"warnings":             warnings,
+		"intent":               intent,
+	}
+	if qaReport != "" {
+		colorData["qa_report_refs"] = []string{filepath.ToSlash(qaReport)}
+	} else {
+		colorData["qa_report_refs"] = []string{}
+	}
+	report["color"] = colorData
+	if report["render_path"] == nil && ungradedPath != "" {
+		report["render_path"] = filepath.ToSlash(ungradedPath)
+	}
+	raw, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(reportPath, append(raw, '\n'), 0o644)
+}
+
 func colorCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "color", Short: "color workflow commands"}
 	parent.AddCommand(colorApplyCommand(opts), colorReviewCommand(opts), colorResearchCommand(opts), colorExportLUTCommand(opts))
@@ -2424,7 +2485,7 @@ func colorCommand(opts *globalOptions) *cobra.Command {
 }
 
 func colorApplyCommand(opts *globalOptions) *cobra.Command {
-	var input, lut, deliver string
+	var projectPath, input, lut, deliver, intent, qaReport, ffmpegPath string
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "apply a .cube LUT with ffmpeg",
@@ -2438,20 +2499,39 @@ func colorApplyCommand(opts *globalOptions) *cobra.Command {
 				return writeStructuredError(cmd, opts, verrors.Validation("LUT_INVALID", err.Error(), "Use a valid 3D .cube LUT", false))
 			}
 			outputPath := strings.TrimPrefix(deliver, "file:")
+			if !filepath.IsAbs(outputPath) {
+				outputPath = filepath.Join(projectPath, outputPath)
+			}
 			plan := vcolor.LUTApplyPlan(input, lut, outputPath)
+			if ffmpegPath != "" && len(plan.Command) > 0 {
+				plan.Command[0] = ffmpegPath
+			}
 			status := "planned"
 			if opts.Commit {
 				if err := vcolor.Run(plan); err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("COLOR_APPLY_FAILED", err.Error(), "Check ffmpeg lut3d support", false))
 				}
+				reportPath := filepath.Join(projectPath, "reports", "render-report.json")
+				if err := updateRenderReportColor(reportPath, input, outputPath, lut, raw, plan, intent, qaReport); err != nil {
+					return writeStructuredError(cmd, opts, verrors.External("RENDER_REPORT_COLOR_WRITE_FAILED", err.Error(), "Check project report permissions", false))
+				}
 				status = "rendered"
 			}
-			return writeOutput(cmd, opts, "color apply", map[string]any{"status": status, "lut": parsed, "plan": plan})
+			return writeOutput(cmd, opts, "color apply", map[string]any{
+				"status":             status,
+				"lut":                parsed,
+				"plan":               plan,
+				"render_report_path": filepath.ToSlash(filepath.Join(projectPath, "reports", "render-report.json")),
+			})
 		},
 	}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&input, "input", "", "input render path")
 	cmd.Flags().StringVar(&lut, "lut", "", ".cube LUT path")
 	cmd.Flags().StringVar(&deliver, "deliver", "file:renders/rough-preview-graded.mp4", "delivery target")
+	cmd.Flags().StringVar(&intent, "intent", "preview", "color intent: preview or final")
+	cmd.Flags().StringVar(&qaReport, "qa-report", "", "optional QA report reference to record in render-report.json")
+	cmd.Flags().StringVar(&ffmpegPath, "ffmpeg-path", "", "ffmpeg binary path")
 	return cmd
 }
 
