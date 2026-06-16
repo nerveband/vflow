@@ -17,6 +17,7 @@ This audit checks the active goal against current repo state and command output.
 - Local-first project/media/transcript/cleanup/framing/timeline/render/color/NLE workflows run without API keys.
 - Live STT calls succeeded for OpenAI, ElevenLabs, Soniox, AssemblyAI, Deepgram, and Gladia against the ignored synthetic speech fixture; bakeoff wrote `work/live-provider-proof/speech/reports/provider-bakeoff.json`.
 - Live STT adapters are implemented for OpenAI, ElevenLabs, Deepgram, AssemblyAI, Gladia, and Soniox; optional providers without runtime keys are skipped explicitly in bakeoff output.
+- Provider bakeoff reports now use the versioned `vflow-provider-bakeoff/v1` contract and `schemas/provider-bakeoff.schema.json` is included in schema validation.
 - Gemini Files API upload path is implemented, tested, and live-proven; `qa analyze --upload files` uploaded video, polled to `ACTIVE`, wrote `work/live-provider-proof/gemini/reports/gemini-video-qa.json`, and returned one candidate.
 - Live Gemini-backed `color review` completed and wrote `work/live-provider-proof/gemini/reports/color-grade-report.json`.
 - Gemini provider responses are sanitized so transient `thoughtSignature` payloads are not emitted in committed CLI reports.

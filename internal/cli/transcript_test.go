@@ -132,12 +132,20 @@ func TestTranscriptBakeoffLiveSkipsMissingOptionalKeysAndWritesReport(t *testing
 	if code != 0 {
 		t.Fatalf("expected missing keys to be recorded, got %d stderr=%s", code, errOut)
 	}
-	for _, want := range []string{`"status": "skipped_missing_key"`, `"status": "local_import_only"`, `provider-bakeoff.json`} {
+	for _, want := range []string{`"version": "vflow-provider-bakeoff/v1"`, `"status": "skipped_missing_key"`, `"status": "local_import_only"`, `provider-bakeoff.json`} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %s in:\n%s", want, out)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "reports", "provider-bakeoff.json")); err != nil {
+	reportPath := filepath.Join(dir, "reports", "provider-bakeoff.json")
+	if _, err := os.Stat(reportPath); err != nil {
 		t.Fatalf("expected bakeoff report: %v", err)
+	}
+	reportRaw, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("expected readable bakeoff report: %v", err)
+	}
+	if !strings.Contains(string(reportRaw), `"version": "vflow-provider-bakeoff/v1"`) {
+		t.Fatalf("bakeoff report missing version:\n%s", reportRaw)
 	}
 }

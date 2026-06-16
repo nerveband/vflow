@@ -682,6 +682,7 @@ func artifactSchemaNames() []string {
 		"review-queue.schema.json",
 		"compiled-timeline.schema.json",
 		"gemini-video-qa.schema.json",
+		"provider-bakeoff.schema.json",
 		"color-grade-report.schema.json",
 		"nle-diff.schema.json",
 		"nle-sidecar.schema.json",
@@ -3255,7 +3256,13 @@ func transcriptBakeoffCommand(opts *globalOptions) *cobra.Command {
 				}
 				results = append(results, result)
 			}
-			data := map[string]any{"status": "checked", "live": opts.Live, "source": filepath.ToSlash(source), "providers": results}
+			data := map[string]any{
+				"version":   "vflow-provider-bakeoff/v1",
+				"status":    "checked",
+				"live":      opts.Live,
+				"source":    filepath.ToSlash(source),
+				"providers": results,
+			}
 			if opts.Commit {
 				reportPath := filepath.Join(projectPath, "reports", "provider-bakeoff.json")
 				raw, _ := json.MarshalIndent(data, "", "  ")

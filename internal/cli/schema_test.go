@@ -34,6 +34,9 @@ func TestSchemaValidateReportsCoverage(t *testing.T) {
 	if !strings.Contains(out, "nle-sidecar.schema.json") {
 		t.Fatalf("schema output missing NLE sidecar artifact schema:\n%s", out)
 	}
+	if !strings.Contains(out, "provider-bakeoff.schema.json") {
+		t.Fatalf("schema output missing provider bakeoff artifact schema:\n%s", out)
+	}
 }
 
 func TestAgentContextMentionsLocalIndexArtifacts(t *testing.T) {
@@ -319,6 +322,49 @@ func TestGeminiVideoQASchemaDocumentsProviderWrapper(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("gemini video qa schema missing required field %q in %#v", want, required)
+		}
+	}
+}
+
+func TestProviderBakeoffSchemaDocumentsProviderRunContract(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "provider-bakeoff.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("invalid provider bakeoff schema json: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if got := properties["version"].(map[string]any)["const"]; got != "vflow-provider-bakeoff/v1" {
+		t.Fatalf("version const = %#v", got)
+	}
+	providers := properties["providers"].(map[string]any)
+	itemProperties := providers["items"].(map[string]any)["properties"].(map[string]any)
+	statusEnum := itemProperties["status"].(map[string]any)["enum"].([]any)
+	for _, want := range []string{"ready", "completed", "failed", "skipped_missing_key", "local_import_only", "invalid_provider"} {
+		found := false
+		for _, got := range statusEnum {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("provider bakeoff status enum missing %q in %#v", want, statusEnum)
+		}
+	}
+	required := schema["required"].([]any)
+	for _, want := range []string{"version", "status", "live", "source", "providers"} {
+		found := false
+		for _, got := range required {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("provider bakeoff schema missing required field %q in %#v", want, required)
 		}
 	}
 }

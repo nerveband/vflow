@@ -796,3 +796,17 @@ Implemented:
 - Added `docs/research/gemini-files-api-upload-rejection-notes.md` as a publishable debugging article.
 - Documented the working Files API mental model, REST upload sequence, auth-placement mismatch, MIME pitfalls, file-state polling, `file_data` payload shape, model drift, and the `vflow` live proof path.
 - Kept the article free of raw secrets and private media details.
+
+## 2026-06-16 Provider Bakeoff Schema Contract
+
+Implemented:
+
+- Added `schemas/provider-bakeoff.schema.json` for `reports/provider-bakeoff.json`.
+- `transcript bakeoff` now writes `version: vflow-provider-bakeoff/v1` into the committed report envelope.
+- `vflow schema --validate` now includes the provider bakeoff report schema in the artifact inventory.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'Test(SchemaValidateReportsCoverage|ProviderBakeoffSchema|TranscriptBakeoff)' -v
+```

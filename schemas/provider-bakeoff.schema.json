@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "provider bakeoff report",
+  "type": "object",
+  "required": ["version", "status", "live", "source", "providers"],
+  "properties": {
+    "version": {
+      "const": "vflow-provider-bakeoff/v1"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["checked"]
+    },
+    "live": {
+      "type": "boolean"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "provider",
+          "env_present",
+          "live_enabled",
+          "capabilities",
+          "payload",
+          "status"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "minLength": 1
+          },
+          "env_var": {
+            "type": "string"
+          },
+          "env_present": {
+            "type": "boolean"
+          },
+          "live_enabled": {
+            "type": "boolean"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "payload": {
+            "type": "object",
+            "required": ["source", "model"],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "completed",
+              "failed",
+              "skipped_missing_key",
+              "local_import_only",
+              "invalid_provider"
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "word_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "text_sample": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "report": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}
