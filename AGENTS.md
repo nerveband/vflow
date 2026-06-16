@@ -8,6 +8,34 @@
 - `go run ./cmd/vflow doctor --format json`
 - `go run ./cmd/vflow audit cli --format json`
 
+## Build, Test, and Release Process
+
+- Build the local CLI with `go build -o bin/vflow ./cmd/vflow`.
+- Run the full local gate before claiming CLI work is done:
+  - `go test ./...`
+  - `go vet ./...`
+  - `go run ./cmd/vflow schema --validate --format json --format-error json`
+  - `go run ./cmd/vflow doctor --format json --format-error json`
+  - `go run ./cmd/vflow audit cli --format json --format-error json`
+- For release candidates, also run `goreleaser check` before tagging.
+- Release binaries must come from GitHub Releases and include platform archives plus `checksums.txt`.
+- Release installs and upgrades must verify checksums before replacing a binary.
+- Use one release publisher per tag. Prefer the GitHub Actions release workflow after pushing a tag; do not also run local `goreleaser release` for the same tag unless the workflow is disabled or the GitHub release/assets have been removed first.
+- If a release workflow fails with GitHub API `422 already_exists`, inspect whether the tag was already published locally and whether the release already has assets with the same names.
+- Keep release artifacts out of git except for source, config, docs, and scripts. Do not commit `bin/`, `dist/`, `tmp/`, or private media outputs.
+
+## Local Install and Upgrade Expectations
+
+- This Mac should have `vflow` installed at `~/.local/bin/vflow` unless the user explicitly chooses another install directory.
+- After a release, verify the installed binary on this computer:
+  - `command -v vflow`
+  - `vflow version --format json --format-error json`
+  - `vflow upgrade --format json --format-error json`
+- The intended user-facing updater is `vflow upgrade`: it should get the latest official binary straight from GitHub Releases, verify `checksums.txt`, back up the existing binary, and install the replacement.
+- Agent and CI workflows must preserve structured JSON output and explicit safety semantics. If an upgrade path mutates the local machine, the implementation must make that behavior clear in JSON and tests.
+- The installer script is a bootstrap path for machines without `vflow` on `PATH`; once installed, prefer testing the native `vflow upgrade` command.
+- Do not regress the updater into a staged-only downloader. A successful committed upgrade must leave `command -v vflow` pointing at the installed release binary.
+
 ## Safety Rules
 
 - Never write raw API keys, tokens, or copied `.env` values into this repo.
