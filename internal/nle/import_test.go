@@ -58,6 +58,23 @@ func TestParseImportRejectsResolveProjectPackageWithActionableHint(t *testing.T)
 	}
 }
 
+func TestParseEDLWithoutVflowSegmentIDIsBlockedAsMissingSidecar(t *testing.T) {
+	result, err := ParseImport("editor-export.edl", []byte(`TITLE: editor export
+FCM: NON-DROP FRAME
+001  AX       V     C        00000012 00000060 00000000 00000048
+`))
+	if err != nil {
+		t.Fatalf("ParseImport returned error: %v", err)
+	}
+	if got := segmentForType(result.Changes, "clip_trim"); got != "" {
+		t.Fatalf("expected EDL clip trim without vflow segment id, got %q", got)
+	}
+	diff := Classify(result)
+	if len(diff.SafeMerge) != 0 || !hasChangeType(diff.Blocked, "missing_sidecar") {
+		t.Fatalf("expected missing sidecar ID to block roundtrip apply: %+v", diff)
+	}
+}
+
 func hasChangeType(changes []Change, typ string) bool {
 	for _, change := range changes {
 		if change.Type == typ {

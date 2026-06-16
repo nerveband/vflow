@@ -715,3 +715,22 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 NLE Missing Sidecar Guardrail
+
+Implemented:
+
+- `nle diff` now blocks identity-sensitive NLE changes that arrive without a vflow segment ID instead of allowing them into `safe_merge`.
+- Raw editor EDL imports without `* VFLOW-SEGMENT-ID` now classify as `missing_sidecar` in the blocked bucket.
+- Added package and CLI regression coverage so missing sidecar identity is enforced both in `internal/nle` and through `vflow nle diff`.
+
+Verification:
+
+```bash
+go test ./internal/nle ./internal/cli -run 'Test(NLE|ParseEDL|ClassifyBlocks|ApplyPlan|AcceptedReview)' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```

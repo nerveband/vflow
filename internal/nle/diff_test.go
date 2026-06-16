@@ -30,6 +30,27 @@ func TestClassifyRoutesKnownNLEChangesWithoutUnclassified(t *testing.T) {
 	}
 }
 
+func TestClassifyBlocksMissingSidecarIdentity(t *testing.T) {
+	diff := Classify(ImportResult{
+		Version: "vflow-nle-import/v1",
+		Input:   "editor-export.edl",
+		Format:  "edl",
+		Changes: []Change{
+			{ID: "change_1", Type: "clip_trim", Description: "EDL event timing changed", Confidence: 0.7},
+		},
+	})
+
+	if len(diff.SafeMerge) != 0 {
+		t.Fatalf("missing segment identity must not be safe-merged: %+v", diff.SafeMerge)
+	}
+	if len(diff.Blocked) != 1 || diff.Blocked[0].Type != "missing_sidecar" {
+		t.Fatalf("expected missing sidecar identity to be blocked: %+v", diff.Blocked)
+	}
+	if diff.Blocked[0].ID != "change_1" {
+		t.Fatalf("blocked change should preserve source change ID: %+v", diff.Blocked[0])
+	}
+}
+
 func TestApplyPlanRefusesBlockedChanges(t *testing.T) {
 	diff := Classify(ImportResult{
 		Version: "vflow-nle-import/v1",

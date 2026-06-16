@@ -204,6 +204,29 @@ func TestNLEExportRejectsUnsupportedTarget(t *testing.T) {
 	}
 }
 
+func TestNLEDiffBlocksRawEDLWithoutVflowSegmentID(t *testing.T) {
+	project := t.TempDir()
+	input := filepath.Join(project, "editor-export.edl")
+	if err := os.WriteFile(input, []byte(`TITLE: editor export
+FCM: NON-DROP FRAME
+001  AX       V     C        00000012 00000060 00000000 00000048
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCLI(t, "nle", "diff", "--project", project, "--import", input, "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("nle diff failed: code=%d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"blocked"`) || !strings.Contains(out, `"type": "missing_sidecar"`) {
+		t.Fatalf("expected missing sidecar ID to be blocked in CLI output: %s", out)
+	}
+	if strings.Contains(out, `"safe_merge": [
+      {`) {
+		t.Fatalf("identity-less EDL change must not be safe-merged: %s", out)
+	}
+}
+
 const cliRoundtripFCPXML = `<?xml version="1.0" encoding="UTF-8"?>
 <fcpxml version="1.11">
   <library><event name="Roundtrip"><project name="vflow"><sequence duration="120/24s"><spine>
