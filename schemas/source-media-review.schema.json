@@ -1,1 +1,114 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"source media review","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "source media review",
+  "type": "object",
+  "required": ["version", "sources"],
+  "properties": {
+    "version": {
+      "const": "vflow-source-media-review/v1"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "version",
+          "source",
+          "width",
+          "height",
+          "duration_seconds",
+          "frame_rate",
+          "timebase",
+          "codec",
+          "audio_streams",
+          "variable_frame_rate_status",
+          "representative_frame_plan"
+        ],
+        "properties": {
+          "version": {
+            "const": "vflow-source-media-review/v1"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "duration_seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "frame_rate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timebase": {
+            "type": "string",
+            "minLength": 1
+          },
+          "codec": {
+            "type": "string",
+            "minLength": 1
+          },
+          "audio_streams": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["index", "codec"],
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "codec": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sample_rate": {
+                  "type": "string"
+                },
+                "channels": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "variable_frame_rate_status": {
+            "type": "string",
+            "enum": ["unknown", "likely_cfr", "possible_vfr"]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "representative_frame_plan": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "probe_command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

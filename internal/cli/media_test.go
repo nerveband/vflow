@@ -32,6 +32,24 @@ func TestMediaProbeFixtureJSON(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "source-media-review.json")); err != nil {
 		t.Fatalf("expected source-media-review.json: %v", err)
 	}
+	artifactRaw, err := os.ReadFile(filepath.Join(dir, "source-media-review.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var artifact map[string]any
+	if err := json.Unmarshal(artifactRaw, &artifact); err != nil {
+		t.Fatalf("invalid source media review artifact json: %v\n%s", err, artifactRaw)
+	}
+	if artifact["version"] != "vflow-source-media-review/v1" {
+		t.Fatalf("unexpected artifact version: %#v", artifact["version"])
+	}
+	if artifact["status"] != nil || artifact["review_path"] != nil {
+		t.Fatalf("source-media-review.json should not persist CLI response envelope:\n%s", artifactRaw)
+	}
+	sources := artifact["sources"].([]any)
+	if len(sources) != 1 {
+		t.Fatalf("expected one source in artifact, got %#v", sources)
+	}
 }
 
 func TestDiscoverMediaSourcesHonorsExistingRelativePath(t *testing.T) {

@@ -630,3 +630,24 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 Source Media Review Contract Hardening
+
+Implemented:
+
+- `schemas/source-media-review.schema.json` now describes canonical `source-media-review.json` with versioned source entries, dimensions, duration, frame rate, timebase, codec, audio streams, VFR/CFR status, warnings, representative frame plan, and optional probe command.
+- Added source media review validation for parsed ffprobe data and write paths.
+- `vflow media probe --commit` now writes a canonical source media review artifact instead of persisting the CLI response envelope.
+- The CLI response still includes status, project, source summaries, and review path for agent workflows.
+- Added regression coverage for invalid source dimensions, canonical artifact writes, committed CLI artifact shape, and schema fields.
+
+Verification:
+
+```bash
+go test ./internal/media ./internal/cli -run 'Test(ParseFFProbe|ValidateSource|WriteReviews|MediaProbe|SourceMediaReviewSchema|SchemaValidate)' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```

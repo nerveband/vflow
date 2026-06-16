@@ -200,3 +200,41 @@ func TestContentEDLAndTimeMapSchemasDocumentFrameContracts(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceMediaReviewSchemaDocumentsProbeContract(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "source-media-review.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("invalid source media review schema json: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if got := properties["version"].(map[string]any)["const"]; got != "vflow-source-media-review/v1" {
+		t.Fatalf("version const = %#v", got)
+	}
+	sources := properties["sources"].(map[string]any)
+	if got := sources["minItems"]; got != float64(1) {
+		t.Fatalf("sources minItems = %#v", got)
+	}
+	sourceProperties := sources["items"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"width", "height"} {
+		if got := sourceProperties[field].(map[string]any)["minimum"]; got != float64(1) {
+			t.Fatalf("%s minimum = %#v", field, got)
+		}
+	}
+	vfrEnum := sourceProperties["variable_frame_rate_status"].(map[string]any)["enum"].([]any)
+	for _, want := range []string{"unknown", "likely_cfr", "possible_vfr"} {
+		found := false
+		for _, got := range vfrEnum {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("vfr enum missing %q in %#v", want, vfrEnum)
+		}
+	}
+}

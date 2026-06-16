@@ -31,6 +31,11 @@ type SourceReview struct {
 	ProbeCommand            []string      `json:"probe_command,omitempty"`
 }
 
+type SourceReviewArtifact struct {
+	Version string         `json:"version"`
+	Sources []SourceReview `json:"sources"`
+}
+
 type ffprobeOutput struct {
 	Streams []struct {
 		Index        int    `json:"index"`
@@ -92,6 +97,9 @@ func ParseFFProbe(raw []byte, source string) (SourceReview, error) {
 	if review.DurationSeconds == 0 {
 		review.DurationSeconds, _ = strconv.ParseFloat(parsed.Format.Duration, 64)
 	}
+	if err := ValidateSourceReview(review); err != nil {
+		return SourceReview{}, err
+	}
 	return review, nil
 }
 
@@ -113,7 +121,27 @@ func ProbeFile(ffprobePath, source string) (SourceReview, error) {
 }
 
 func WriteReview(projectPath string, review SourceReview) error {
-	raw, err := json.MarshalIndent(review, "", "  ")
+	return WriteReviewArtifact(projectPath, SourceReviewArtifact{
+		Version: "vflow-source-media-review/v1",
+		Sources: []SourceReview{review},
+	})
+}
+
+func WriteReviews(projectPath string, reviews []SourceReview) error {
+	return WriteReviewArtifact(projectPath, SourceReviewArtifact{
+		Version: "vflow-source-media-review/v1",
+		Sources: reviews,
+	})
+}
+
+func WriteReviewArtifact(projectPath string, artifact SourceReviewArtifact) error {
+	if err := ValidateSourceReviewArtifact(artifact); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(projectPath, 0o755); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(artifact, "", "  ")
 	if err != nil {
 		return err
 	}

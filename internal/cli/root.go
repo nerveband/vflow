@@ -1055,11 +1055,7 @@ func mediaProbeCommand(opts *globalOptions) *cobra.Command {
 				data["source"] = reviews[0]
 			}
 			if opts.Commit {
-				raw, err := json.MarshalIndent(data, "", "  ")
-				if err != nil {
-					return err
-				}
-				if err := os.WriteFile(filepath.Join(projectPath, "source-media-review.json"), append(raw, '\n'), 0o644); err != nil {
+				if err := vmedia.WriteReviews(projectPath, reviews); err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("SOURCE_REVIEW_WRITE_FAILED", err.Error(), "Check project write permissions", false))
 				}
 				data["status"] = "written"
