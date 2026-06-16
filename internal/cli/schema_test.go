@@ -115,3 +115,39 @@ func TestColorGradeReportSchemaDocumentsReviewContract(t *testing.T) {
 		t.Fatalf("observation confidence maximum = %#v", got)
 	}
 }
+
+func TestTranscriptSchemaDocumentsCanonicalWordsContract(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "transcript.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("invalid transcript schema json: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if got := properties["version"].(map[string]any)["const"]; got != "vflow-words/v1" {
+		t.Fatalf("version const = %#v", got)
+	}
+	words := properties["words"].(map[string]any)
+	wordProperties := words["items"].(map[string]any)["properties"].(map[string]any)
+	if got := wordProperties["start_frame"].(map[string]any)["minimum"]; got != float64(0) {
+		t.Fatalf("start_frame minimum = %#v", got)
+	}
+	if got := wordProperties["confidence"].(map[string]any)["maximum"]; got != float64(1) {
+		t.Fatalf("confidence maximum = %#v", got)
+	}
+	required := words["items"].(map[string]any)["required"].([]any)
+	for _, want := range []string{"id", "text", "start_frame", "end_frame", "provider"} {
+		found := false
+		for _, got := range required {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("word schema missing required field %q in %#v", want, required)
+		}
+	}
+}

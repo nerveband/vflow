@@ -27,6 +27,27 @@ func TestTranscriptImportWritesCanonicalWords(t *testing.T) {
 	}
 }
 
+func TestTranscriptImportRejectsInvalidCanonicalWords(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "bad-words.json")
+	raw := `{"version":"vflow-words/v1","source_media_id":"source","rate":"30000/1001","words":[{"id":"w_000001","text":"bad","start_frame":30,"end_frame":30,"confidence":0.9,"provider":"generic-words"}]}`
+	if err := os.WriteFile(input, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runCLI(t, "transcript", "import", "--project", dir, "--provider", "generic-words", "--input", input, "--commit", "--format", "json", "--format-error", "json")
+	if code == 0 {
+		t.Fatalf("expected invalid transcript failure, stdout=%s stderr=%s", out, errOut)
+	}
+	for _, want := range []string{`"code": "TRANSCRIPT_IMPORT_FAILED"`, "end_frame must be greater than start_frame"} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("expected %q in stderr:\n%s", want, errOut)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "transcript", "words.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no words.json to be written, stat err=%v", err)
+	}
+}
+
 func TestTranscriptSearchLocalUsesProjectIndex(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VFLOW_INDEX_PATH", filepath.Join(t.TempDir(), "index.sqlite"))

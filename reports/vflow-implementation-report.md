@@ -587,3 +587,24 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 Transcript Words Contract Hardening
+
+Implemented:
+
+- `schemas/transcript.schema.json` now describes canonical `transcript/words.json` instead of accepting any object.
+- Added transcript validation before importing or writing canonical words.
+- Validation now requires `vflow-words/v1`, source media ID, frame rate, stable word IDs/text/provider, non-negative start frames, `end_frame > start_frame`, and confidence values between 0 and 1.
+- `vflow transcript import --provider generic-words` now rejects invalid canonical words with structured `TRANSCRIPT_IMPORT_FAILED` before writing `transcript/words.json`.
+- Added regression coverage for invalid frame ranges, confidence bounds, CLI rejection, and transcript schema fields.
+
+Verification:
+
+```bash
+go test ./internal/transcript ./internal/cli -run 'Test(Import|Validate|Transcript|SchemaValidate|TranscriptSchema)' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```

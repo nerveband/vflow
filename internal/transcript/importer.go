@@ -34,9 +34,16 @@ func Import(provider string, raw []byte, opts ImportOptions) (Words, error) {
 		if words.Rate == "" {
 			words.Rate = opts.Rate
 		}
+		if err := ValidateWords(words); err != nil {
+			return Words{}, err
+		}
 		return words, nil
 	case "plain-text", "local":
-		return importPlainText(provider, string(raw), opts), nil
+		words := importPlainText(provider, string(raw), opts)
+		if err := ValidateWords(words); err != nil {
+			return Words{}, err
+		}
+		return words, nil
 	default:
 		return Words{}, fmt.Errorf("unsupported transcript importer %q", provider)
 	}
@@ -80,6 +87,9 @@ func importPlainText(provider, text string, opts ImportOptions) Words {
 }
 
 func WriteWords(projectPath string, words Words) error {
+	if err := ValidateWords(words); err != nil {
+		return err
+	}
 	raw, err := json.MarshalIndent(words, "", "  ")
 	if err != nil {
 		return err
