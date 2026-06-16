@@ -688,6 +688,7 @@ func artifactSchemaNames() []string {
 		"nle-sidecar.schema.json",
 		"provenance.schema.json",
 		"render-report.schema.json",
+		"audit-report.schema.json",
 		"media-sync-map.schema.json",
 		"source-range-manifest.schema.json",
 		"transcript-proof.schema.json",

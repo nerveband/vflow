@@ -12,6 +12,7 @@ This audit checks the active goal against current repo state and command output.
 - Static checks pass with `go vet ./...`.
 - Command schema validates with `vflow schema --validate --format json`.
 - CLI audit passes hardened threshold: score `100`, threshold `85`.
+- CLI audit output is covered by `schemas/audit-report.schema.json` for the versioned `vflow-cli-audit/v1` scorecard contract.
 - Repo has `AGENTS.md`, `SKILL.md`, bundled workflow skill, schemas, CI, GoReleaser config, and install script.
 - Structured JSON success/error envelopes are implemented and tested.
 - Local-first project/media/transcript/cleanup/framing/timeline/render/color/NLE workflows run without API keys.

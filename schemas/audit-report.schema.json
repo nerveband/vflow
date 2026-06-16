@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "audit report",
+  "type": "object",
+  "required": [
+    "version",
+    "score",
+    "max_score",
+    "threshold",
+    "status",
+    "checks",
+    "summary",
+    "root"
+  ],
+  "properties": {
+    "version": {
+      "const": "vflow-cli-audit/v1"
+    },
+    "score": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_score": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "threshold": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "weight", "passed"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "commands",
+        "mutating_commands",
+        "mutating_commands_gated",
+        "schema_count",
+        "provider_live_adapters",
+        "threshold_policy",
+        "secrets_written_to_repo",
+        "private_work_published"
+      ],
+      "properties": {
+        "commands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mutating_commands": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mutating_commands_gated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "schema_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provider_live_adapters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "threshold_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "secrets_written_to_repo": {
+          "type": "boolean"
+        },
+        "private_work_published": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "root": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}

@@ -810,3 +810,18 @@ Verification:
 ```bash
 go test ./internal/cli -run 'Test(SchemaValidateReportsCoverage|ProviderBakeoffSchema|TranscriptBakeoff)' -v
 ```
+
+## 2026-06-16 Audit Report Schema Contract
+
+Implemented:
+
+- Added `schemas/audit-report.schema.json` for the `vflow-cli-audit/v1` scorecard contract.
+- `vflow schema --validate` now includes the audit report schema in the artifact inventory.
+- Added regression coverage for audit version, pass/fail status, and required summary fields.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'Test(SchemaValidateReportsCoverage|AuditReportSchema)' -v
+go run ./cmd/vflow audit cli --format json --format-error json
+```

@@ -37,6 +37,9 @@ func TestSchemaValidateReportsCoverage(t *testing.T) {
 	if !strings.Contains(out, "provider-bakeoff.schema.json") {
 		t.Fatalf("schema output missing provider bakeoff artifact schema:\n%s", out)
 	}
+	if !strings.Contains(out, "audit-report.schema.json") {
+		t.Fatalf("schema output missing audit report artifact schema:\n%s", out)
+	}
 }
 
 func TestAgentContextMentionsLocalIndexArtifacts(t *testing.T) {
@@ -365,6 +368,47 @@ func TestProviderBakeoffSchemaDocumentsProviderRunContract(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("provider bakeoff schema missing required field %q in %#v", want, required)
+		}
+	}
+}
+
+func TestAuditReportSchemaDocumentsScorecardContract(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "audit-report.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("invalid audit report schema json: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if got := properties["version"].(map[string]any)["const"]; got != "vflow-cli-audit/v1" {
+		t.Fatalf("version const = %#v", got)
+	}
+	statusEnum := properties["status"].(map[string]any)["enum"].([]any)
+	for _, want := range []string{"pass", "fail"} {
+		found := false
+		for _, got := range statusEnum {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("audit status enum missing %q in %#v", want, statusEnum)
+		}
+	}
+	summaryRequired := properties["summary"].(map[string]any)["required"].([]any)
+	for _, want := range []string{"commands", "mutating_commands", "mutating_commands_gated", "schema_count", "provider_live_adapters", "threshold_policy", "secrets_written_to_repo", "private_work_published"} {
+		found := false
+		for _, got := range summaryRequired {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("audit summary missing required field %q in %#v", want, summaryRequired)
 		}
 	}
 }
