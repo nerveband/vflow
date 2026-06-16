@@ -413,12 +413,19 @@ Proof commands:
 ```bash
 go run ./cmd/vflow qa doctor --provider gemini --key-env GEMINI_API_KEY --model gemini-2.5-flash --live --format json --format-error json
 cd work/tmp-gemini-sdk-check && go run .
+go run ./cmd/vflow qa doctor --provider gemini --model gemini-3.5-flash --live --format json --format-error json
+go run ./cmd/vflow qa analyze --project work/test-projects/cair-ga-group-4-current-board-social-30s --render work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4 --provider gemini --model gemini-3.5-flash --upload inline --live --commit --timeout 5m --format json --format-error json
+go run ./cmd/vflow color review --project work/test-projects/cair-ga-group-4-current-board-social-30s --input work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4 --provider gemini --model gemini-3.5-flash --live --commit --timeout 5m --format json --format-error json
 ```
 
 Result:
 
 - Both the vflow REST path and the official Go SDK path reached Google and returned the same provider error for the currently exported `GEMINI_API_KEY`: `API key expired` with `API_KEY_INVALID`.
 - To test multiple candidate keys safely, export each key under a distinct variable and run `qa doctor --key-env` for each variable name.
+- After rotating/restarting Codex, `qa doctor` passed with `gemini-3.5-flash` through `env:GEMINI_API_KEY`.
+- `qa analyze --upload inline` succeeded on the graded 30-second render with `modelVersion: gemini-3.5-flash`, wrote `reports/gemini-video-qa.json`, and returned video-token usage metadata.
+- `color review` succeeded on the graded render with `modelVersion: gemini-3.5-flash`, wrote `reports/color-grade-report.json`, and returned color/exposure notes.
+- `qa analyze --upload files` still failed in the Files API path with `API_KEY_INVALID`; the official Go SDK `Files.UploadFromPath` probe failed the same way for this key/project. Inline video remains the verified working path for this fixture-sized render.
 
 ## 2026-06-15 Framing Compiler Hardening
 

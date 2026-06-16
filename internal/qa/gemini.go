@@ -283,6 +283,8 @@ func UploadFile(apiKey, path string) (UploadedFile, error) {
 		return UploadedFile{}, err
 	}
 	uploadReq.Header.Set("Content-Length", fmt.Sprint(len(video)))
+	uploadReq.Header.Set("Content-Type", mimeType)
+	uploadReq.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
 	uploadReq.Header.Set("X-Goog-Upload-Offset", "0")
 	uploadReq.Header.Set("X-Goog-Upload-Command", "upload, finalize")
 	uploadResp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(uploadReq)

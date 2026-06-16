@@ -87,6 +87,9 @@ func TestAnalyzeFileVideoUploadsThenUsesFileData(t *testing.T) {
 			_, _ = w.Write([]byte(`{}`))
 		case "/upload-session":
 			uploadSeen = true
+			if got := r.Header.Get("x-goog-api-key"); got != "test-key" {
+				t.Fatalf("final upload missing api key header: %q", got)
+			}
 			if got := r.Header.Get("X-Goog-Upload-Command"); got != "upload, finalize" {
 				t.Fatalf("final upload command = %q", got)
 			}

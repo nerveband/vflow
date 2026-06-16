@@ -2128,7 +2128,11 @@ func qaAnalyzeCommand(opts *globalOptions) *cobra.Command {
 					raw, err = vqa.AnalyzeInlineVideo(key, selected, renderPath, vqa.VideoQAPrompt)
 				}
 				if err != nil {
-					return writeStructuredError(cmd, opts, verrors.External("GEMINI_QA_FAILED", err.Error(), "Run qa doctor and verify model availability", true))
+					hint := "Run qa doctor and verify model availability"
+					if uploadMode == "files" {
+						hint = "For small renders try --upload inline; otherwise verify Gemini Files API access for this key/project"
+					}
+					return writeStructuredError(cmd, opts, verrors.External("GEMINI_QA_FAILED", err.Error(), hint, true))
 				}
 				sanitized := vqa.SanitizeProviderResponse(raw)
 				data["provider_response"] = sanitized
