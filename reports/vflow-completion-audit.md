@@ -1,13 +1,13 @@
 # vflow Completion Audit
 
-Date: 2026-06-14
+Date: 2026-06-16
 
 This audit checks the active goal against current repo state and command output.
 
 ## Proven
 
 - Public repository exists and is public: `https://github.com/nerveband/vflow`.
-- Current branch is `main` tracking `origin/main`.
+- Current branch is `codex/vflow-sync-hardening` tracking `origin/codex/vflow-sync-hardening`.
 - Unit and integration tests pass with `go test ./...`.
 - Static checks pass with `go vet ./...`.
 - Command schema validates with `vflow schema --validate --format json`.
@@ -20,8 +20,10 @@ This audit checks the active goal against current repo state and command output.
 - Gemini Files API upload path is implemented, tested, and live-proven; `qa analyze --upload files` uploaded video, polled to `ACTIVE`, wrote `work/live-provider-proof/gemini/reports/gemini-video-qa.json`, and returned one candidate.
 - Live Gemini-backed `color review` completed and wrote `work/live-provider-proof/gemini/reports/color-grade-report.json`.
 - Gemini provider responses are sanitized so transient `thoughtSignature` payloads are not emitted in committed CLI reports.
+- Committed Gemini QA reports now use the versioned vflow wrapper `vflow-gemini-video-qa/v1`, preserving vflow metadata while nesting raw Gemini output under `provider_response`.
 - Command contract registry now includes all implemented plan-listed top-level/framing command surfaces that were previously missing from schema output: `feedback`, `framing propose`, and `framing review`.
 - NLE self-roundtrip fixture coverage now parses vflow exports back from EDL, FCPXML/Resolve, Premiere XMEML, MLT, and OTIO; all preserve `seg_A` identity for `clip_trim` and classify without unclassified changes.
+- NLE sidecars now have an explicit `schemas/nle-sidecar.schema.json` contract, schema validation includes it, and `nle export` rejects unsupported target typos instead of silently emitting a generic sidecar.
 - The copied `references/Executive Directors.drp` fixture was inspected as local JSON switcher/project state, not a timeline interchange export; `nle import` now detects `.drp`/`.dra`/`.drt` and returns a structured `NLE_IMPORT_PARSE_FAILED` with the actionable instruction to export FCPXML, EDL, or OTIO from Resolve.
 - Copied CAIR-GA fixture probe recognized four copied 3840x2160 source-camera clips under `media/source-4k`.
 - Actual CAIR-GA 30-second CLI render wrote `work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/cair-ga-actual-30s.mp4` from copied source-camera media and verified as 1920x1080 H.264/AAC.
@@ -105,12 +107,12 @@ Additional proof:
 Provider status:
 
 - `OPENAI_API_KEY` was present and live STT succeeded.
-- `GEMINI_API_KEY` was present, but Gemini returned `API key expired` / `API_KEY_INVALID`; live Gemini color/video QA is blocked until the key is rotated.
+- `GEMINI_API_KEY` was present; after key rotation and Files API auth-path hardening, live Gemini inline and Files API QA succeeded with `gemini-3.5-flash`, and live Gemini color review succeeded on the graded render.
 
 Final verification after framing and render-verify patches:
 
 - `go test ./...`: pass.
 - `go vet ./...`: pass.
-- `go run ./cmd/vflow schema --validate --format json --format-error json`: pass, command count `60`, schema count `20`.
-- `go run ./cmd/vflow doctor --format json --format-error json`: pass; ffmpeg, ffprobe, `OPENAI_API_KEY`, and `GEMINI_API_KEY` detected.
+- `go run ./cmd/vflow schema --validate --format json --format-error json`: pass, command count `63`, schema count `21`.
+- `go run ./cmd/vflow doctor --format json --format-error json`: pass; ffmpeg, ffprobe, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and the configured STT provider env vars detected by boolean presence only.
 - `go run ./cmd/vflow audit cli --format json --format-error json`: pass, score `100/100`.
