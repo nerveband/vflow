@@ -131,12 +131,18 @@ func parseXMLChanges(raw []byte) ([]Change, error) {
 				changes = appendUniqueChange(changes, "audio_level", currentSegment, "audio level changed in NLE timeline", 0.90)
 			case "adjust-transform", "adjust-crop":
 				changes = appendUniqueChange(changes, "crop_change", currentSegment, "framing transform changed in NLE timeline", 0.90)
+			case "timemap", "timept":
+				changes = appendUniqueChange(changes, "speed_change", currentSegment, "retime or speed map changed in NLE timeline", 0.90)
+			case "media-rep":
+				changes = appendUniqueChange(changes, "media_replace", currentSegment, "media representation changed in NLE timeline", 0.85)
 			case "title", "generatoritem":
 				currentSegment = firstNonEmpty(attrs["name"], attrs["id"], currentSegment)
 				changes = appendUniqueChange(changes, "title_card", currentSegment, "title or card edited in NLE timeline", 0.85)
 			case "filter-video", "filter", "effect":
 				effectName := strings.ToLower(strings.Join([]string{attrs["name"], attrs["id"], attrs["uid"]}, " "))
 				switch {
+				case strings.Contains(effectName, "speed"), strings.Contains(effectName, "retime"), strings.Contains(effectName, "timewarp"):
+					changes = appendUniqueChange(changes, "speed_change", currentSegment, "speed effect changed in NLE timeline", 0.85)
 				case strings.Contains(effectName, "lumetri"), strings.Contains(effectName, "color"), strings.Contains(effectName, "grade"):
 					changes = appendUniqueChange(changes, "color_grade", currentSegment, "color grade effect changed in NLE timeline", 0.95)
 				case strings.Contains(effectName, "plugin"):
@@ -183,7 +189,8 @@ func parseOTIOChanges(raw []byte) ([]Change, error) {
 		switch node := value.(type) {
 		case map[string]any:
 			schema := strings.ToLower(fmt.Sprint(node["OTIO_SCHEMA"]))
-			if name := strings.TrimSpace(fmt.Sprint(node["name"])); name != "" && name != "<nil>" {
+			name := strings.TrimSpace(fmt.Sprint(node["name"]))
+			if strings.HasPrefix(schema, "clip.") && name != "" && name != "<nil>" {
 				currentSegment = name
 			}
 			if strings.HasPrefix(schema, "clip.") {
@@ -192,9 +199,11 @@ func parseOTIOChanges(raw []byte) ([]Change, error) {
 			if strings.HasPrefix(schema, "marker.") {
 				changes = appendUniqueChange(changes, "marker_note", currentSegment, "OTIO marker changed", 0.85)
 			}
-			if strings.HasPrefix(schema, "effect.") {
-				effectName := strings.ToLower(fmt.Sprint(node["name"]))
-				if strings.Contains(effectName, "color") || strings.Contains(effectName, "grade") || strings.Contains(effectName, "lumetri") {
+			if strings.HasPrefix(schema, "effect.") || strings.Contains(schema, "timewarp") {
+				effectName := strings.ToLower(name)
+				if strings.Contains(effectName, "speed") || strings.Contains(effectName, "retime") || strings.Contains(effectName, "timewarp") || strings.Contains(schema, "timewarp") {
+					changes = appendUniqueChange(changes, "speed_change", currentSegment, "OTIO speed effect changed", 0.80)
+				} else if strings.Contains(effectName, "color") || strings.Contains(effectName, "grade") || strings.Contains(effectName, "lumetri") {
 					changes = appendUniqueChange(changes, "color_grade", currentSegment, "OTIO color effect changed", 0.80)
 				} else {
 					changes = appendUniqueChange(changes, "complex_effect", currentSegment, "OTIO effect changed", 0.75)

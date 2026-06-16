@@ -113,6 +113,64 @@ func TestFCPXMLMarkerValueWithVflowIDPreservesSegmentID(t *testing.T) {
 	}
 }
 
+func TestParseFCPXMLDetectsSpeedAndMediaReplacementReviewChanges(t *testing.T) {
+	result, err := ParseImport("editor-retime.fcpxml", []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<fcpxml version="1.11">
+  <library><event name="Roundtrip"><project name="vflow"><sequence duration="96/24s"><spine>
+    <asset-clip name="seg_A" offset="0/24s" start="12/24s" duration="48/24s">
+      <marker start="0s" note="vflow:segment-id=seg_A"/>
+      <timeMap><timept time="0s" value="0s"/><timept time="48/24s" value="96/24s"/></timeMap>
+      <media-rep src="file:///replacement-camera.mov"/>
+    </asset-clip>
+  </spine></sequence></project></event></library>
+</fcpxml>`))
+	if err != nil {
+		t.Fatalf("ParseImport returned error: %v", err)
+	}
+	for _, want := range []string{"speed_change", "media_replace"} {
+		if got := segmentForType(result.Changes, want); got != "seg_A" {
+			t.Fatalf("expected %s to retain segment id seg_A, got %q changes=%+v", want, got, result.Changes)
+		}
+	}
+	diff := Classify(result)
+	for _, want := range []string{"speed_change", "media_replace"} {
+		if !hasChangeType(diff.NeedsReview, want) {
+			t.Fatalf("needs_review missing %q in %+v", want, diff.NeedsReview)
+		}
+	}
+}
+
+func TestParseOTIODetectsSpeedEffectAsNeedsReview(t *testing.T) {
+	result, err := ParseImport("editor-retime.otio", []byte(`{
+  "OTIO_SCHEMA": "Timeline.1",
+  "name": "vflow",
+  "tracks": {
+    "OTIO_SCHEMA": "Stack.1",
+    "children": [{
+      "OTIO_SCHEMA": "Track.1",
+      "children": [{
+        "OTIO_SCHEMA": "Clip.1",
+        "name": "seg_A",
+        "effects": [{
+          "OTIO_SCHEMA": "LinearTimeWarp.1",
+          "name": "Speed 50%"
+        }]
+      }]
+    }]
+  }
+}`))
+	if err != nil {
+		t.Fatalf("ParseImport returned error: %v", err)
+	}
+	if got := segmentForType(result.Changes, "speed_change"); got != "seg_A" {
+		t.Fatalf("expected OTIO speed effect to retain segment id seg_A, got %q changes=%+v", got, result.Changes)
+	}
+	diff := Classify(result)
+	if !hasChangeType(diff.NeedsReview, "speed_change") {
+		t.Fatalf("needs_review missing speed_change in %+v", diff.NeedsReview)
+	}
+}
+
 func hasChangeType(changes []Change, typ string) bool {
 	for _, change := range changes {
 		if change.Type == typ {

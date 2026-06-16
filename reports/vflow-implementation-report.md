@@ -774,3 +774,25 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 NLE Retime And Media Replacement Import Hardening
+
+Implemented:
+
+- FCPXML `timeMap`/`timept` imports now classify as `speed_change` in the needs-review bucket.
+- FCPXML `media-rep` imports now classify as `media_replace` in the needs-review bucket.
+- OTIO time-warp style effects now classify as `speed_change` without replacing the current clip segment identity with the effect name.
+
+Verification:
+
+```bash
+go test ./internal/nle -run 'TestParse(FCPXML|OTIO)|TestClassifyRoutesKnown|TestAcceptedReview' -v
+```
+
+## 2026-06-16 Gemini Files API Upload Rejection Article
+
+Implemented:
+
+- Added `docs/research/gemini-files-api-upload-rejection-notes.md` as a publishable debugging article.
+- Documented the working Files API mental model, REST upload sequence, auth-placement mismatch, MIME pitfalls, file-state polling, `file_data` payload shape, model drift, and the `vflow` live proof path.
+- Kept the article free of raw secrets and private media details.
