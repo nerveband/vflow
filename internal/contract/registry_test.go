@@ -21,6 +21,25 @@ func TestDefaultRegistryIncludesCoreCommands(t *testing.T) {
 			t.Fatalf("missing command %q", name)
 		}
 	}
+	for _, name := range []string{
+		"project new-project",
+		"media inspect-media",
+		"media make-proxy",
+		"transcript stt",
+		"transcript load-transcript",
+		"transcript word-align",
+		"cleanup cleanup-plan",
+		"framing speaker-map",
+		"framing apply-framing",
+		"timeline build-timeline",
+		"render qa-render",
+		"nle to-nle",
+		"artifacts outputs",
+	} {
+		if _, ok := reg.Get(name); !ok {
+			t.Fatalf("missing synonym command %q", name)
+		}
+	}
 	for _, name := range []string{"feedback", "framing propose"} {
 		cmd, _ := reg.Get(name)
 		if !cmd.SupportsDryRun || !cmd.RequiresCommit {

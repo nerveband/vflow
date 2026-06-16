@@ -36,6 +36,28 @@ func TestRootHelpListsCoreCommands(t *testing.T) {
 	}
 }
 
+func TestSynonymCommandsResolve(t *testing.T) {
+	for _, args := range [][]string{
+		{"outputs", "list", "--help"},
+		{"project", "new-project", "--help"},
+		{"media", "inspect-media", "--help"},
+		{"media", "make-proxy", "--help"},
+		{"cleanup", "cleanup-plan", "--help"},
+		{"framing", "speaker-map", "--help"},
+		{"framing", "apply-framing", "--help"},
+		{"timeline", "build-timeline", "--help"},
+		{"render", "qa-render", "--help"},
+		{"nle", "to-nle", "--help"},
+		{"transcribe", "stt", "--help"},
+		{"transcript", "load-transcript", "--help"},
+		{"transcript", "word-align", "--help"},
+	} {
+		if _, errOut, code := runCLI(t, args...); code != 0 {
+			t.Fatalf("expected alias %v to resolve, got %d stderr=%s", args, code, errOut)
+		}
+	}
+}
+
 func TestValidationErrorsUseStructuredJSON(t *testing.T) {
 	_, errOut, code := runCLI(t, "transcript", "create", "--provider", "nope", "--format", "json")
 	if code != 4 {

@@ -25,6 +25,8 @@ Date: 2026-06-14
 - `nle accept` writes `imports/accepted-nle-changes.json` artifacts so needs-review changes can be applied only after explicit review acceptance.
 - Cleanup review and NLE diff can deliver HTML review artifacts.
 - `framing calibrate` starts a managed localhost crop/zoom/reframe calibration session with embedded HTML/CSS/JS, structured session JSON, project-scoped media serving, status persistence under `tmp/sessions/`, API validation, commit-gated writes, and programmatic shutdown. `framing crop`, `framing zoom`, `framing reframe`, `framing frame`, `framing crop-calibrate`, `framing zoom-calibrate`, and `framing preset-calibrate` are aliases for agent discoverability.
+- Agent-facing synonym commands now cover common intent terms across project, media, transcript, cleanup, framing, timeline, render, NLE, and artifact workflows while preserving canonical command names in output.
+- README and bundled skill docs now explain what `vflow` does for agents, what guarantees it provides, when not to use it, current alias vocabulary, and future feature boundaries.
 - Color review writes `reports/color-grade-report.json` without requiring live Gemini, and live Gemini can enrich it when credentials work.
 - Public-repo support files: `AGENTS.md`, root `SKILL.md`, bundled workflow skill, schemas, CI, release workflow, GoReleaser config, install script, and research notes.
 - `upgrade` now checks GitHub release metadata, selects the current OS/arch asset, detects checksum assets, and can stage a release asset into a cache with `--commit`.
@@ -47,7 +49,7 @@ Current results:
 - `go test ./...` passed.
 - `make test` passed.
 - `make lint` / `go vet ./...` passed.
-- `schema --validate` returned `status: valid` and `command_count: 55`.
+- `schema --validate` returned `status: valid`; current command count is higher because agent-facing aliases are included in the registry.
 - `doctor` found `ffmpeg`, `ffprobe`, and `python3`.
 - `audit cli` returned score `100` with pass threshold `85`.
 
@@ -66,6 +68,7 @@ Framing calibrator proof commands:
 ```bash
 go test ./internal/framing/session ./internal/cli
 go run ./cmd/vflow framing calibrate --project fixtures/project/basic --listen 127.0.0.1:0 --open=false --wait=false --session-timeout 30s --format json --format-error json
+go run ./cmd/vflow schema --validate --format json --format-error json
 ```
 
 The calibrator returns `session_id`, `url`, `health_url`, `status_url`, `shutdown_url`, artifact paths, `port`, `pid`, timeout, and shutdown-token presence. Mutating API writes remain blocked unless the session was started with `--commit` and the API request carries commit intent.
@@ -88,7 +91,7 @@ Results:
 - `go test ./...` passed across all packages.
 - `go vet ./...` passed.
 - `auth doctor` returned redacted `env_present: true` for `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`, `SONIOX_API_KEY`, `ASSEMBLYAI_API_KEY`, `DEEPGRAM_API_KEY`, `GLADIA_API_KEY`, `GEMINI_API_KEY`, `HF_TOKEN`, and `ANTHROPIC_API_KEY`.
-- `schema --validate` returned `status: valid` and `command_count: 55`.
+- `schema --validate` returned `status: valid`; current command count is higher because agent-facing aliases are included in the registry.
 - `doctor` found `ffmpeg`, `ffprobe`, and `python3`.
 - `audit cli` returned `score: 100`, `threshold: 85`, `status: pass`.
 - Release workflow published `v0.1.2`; `upgrade --commit` staged `vflow_0.1.2_darwin_arm64.tar.gz` from the public release into `tmp/upgrade-proof-v0.1.2`.

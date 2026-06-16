@@ -4,6 +4,73 @@
 
 The design goal is simple: agents can suggest edits, but `vflow` owns validation, canonical artifacts, frame math, safety gates, and writes.
 
+## What Agents Use vflow For
+
+Use `vflow` when an agent needs a reliable editing control plane instead of guessing from a chat transcript or mutating an editor project directly. The tool helps agents:
+
+- Create and inspect a project folder with stable JSON artifacts.
+- Probe media with `ffprobe` and record media facts in project artifacts.
+- Import, create, search, align, and sync transcripts while keeping frame numbers canonical.
+- Plan cleanup decisions, transcript cuts, timeline compiles, and preview renders with dry-run JSON before writing anything.
+- Calibrate human-approved crop/zoom/reframe presets through a local browser UI, then compile framing lanes from preset IDs rather than invented crop boxes.
+- Render and verify previews with deterministic `ffmpeg` commands.
+- Run live STT or Gemini QA only when the caller explicitly opts into provider quota.
+- Export to NLE interchange formats and classify edited roundtrips without treating NLE files as source of truth.
+- Deliver artifacts to stdout, files, or webhooks while preserving structured status.
+
+The agent pattern is:
+
+1. Run commands with `--format json --format-error json`.
+2. Inspect `ok`, `command`, `data`, and artifact paths.
+3. Keep mutating commands dry-run until the plan is acceptable.
+4. Add `--commit` only when writes are intended.
+5. Use canonical artifact paths and preset IDs in later commands.
+
+## What You Can Rely On
+
+`vflow` intentionally exposes a narrow contract:
+
+- Canonical state lives in versioned JSON artifacts under the project folder.
+- Command output uses `vflow-response/v1`; errors use `vflow-error/v1`.
+- Mutating command metadata is listed by `vflow schema --validate`.
+- Mutating workflows are dry-run by default and require `--commit` for writes.
+- Live provider calls require `--live`; writing or costly live calls require `--commit`.
+- Frame numbers are canonical. Seconds are readable derivatives.
+- Framing compilers choose approved preset IDs; they do not invent crop rectangles.
+- NLE files are import/export adapters. Roundtrip changes are safe-merged, routed to review, or blocked.
+- Secrets are read from runtime environment variables or external secret tools and are not written to repo artifacts.
+- Local managed GUI sessions bind only to localhost and expose programmatic health/status/shutdown endpoints.
+
+## When Not To Use vflow
+
+Do not use `vflow` as:
+
+- A general-purpose video editor or replacement for Resolve, Final Cut Pro, Premiere, Shotcut, or Kdenlive.
+- A tool for generating unapproved crop boxes from an LLM suggestion.
+- A way to mutate private media, provider outputs, or NLE project files without `--commit` and artifact review.
+- A cloud job runner. The CLI is local-first; remote orchestration should wrap its JSON contracts.
+- A secret store. Use environment variables, 1Password, Secret Gate, or another runtime secret system.
+- A final authority for subjective creative judgment. It validates contracts and produces reviewable artifacts; humans still approve sensitive cuts, framing, color, and NLE roundtrips.
+
+## Agent Vocabulary
+
+Agents and humans often ask for the same operation with different words. `vflow` keeps one canonical command but exposes aliases for common intent terms. The canonical command still appears in output.
+
+| Intent | Canonical command | Common aliases |
+| --- | --- | --- |
+| Start a crop/zoom/reframe calibration UI | `framing calibrate` | `framing crop`, `framing zoom`, `framing reframe`, `framing frame`, `framing crop-calibrate`, `framing zoom-calibrate`, `framing preset-calibrate` |
+| Transcribe audio/video | `transcript create` | `transcript transcribe`, `transcript speech-to-text`, `transcript stt`, `transcribe stt` |
+| Load transcript artifacts | `transcript import` | `transcript load-transcript`, `transcript ingest-transcript` |
+| Align transcript words | `transcript align` | `transcript sync-transcript`, `transcript align-words`, `transcript word-align` |
+| Add or inspect media | `media ingest`, `media probe` | `media add-media`, `media import-media`, `media inspect-media`, `media analyze-media`, `media metadata` |
+| Build proxy media | `media proxy` | `media make-proxy`, `media create-proxy`, `media transcode-proxy` |
+| Build timelines and framing lanes | `timeline compile`, `framing compile` | `timeline build-timeline`, `timeline make-timeline`, `timeline assemble`, `framing apply-framing`, `framing compile-framing`, `framing build-framing` |
+| Render or verify preview media | `render preview`, `render verify` | `render make-preview`, `render render-sample`, `render verify-render`, `render check-render`, `render qa-render` |
+| Exchange with an NLE | `nle export`, `nle import`, `nle diff` | `nle to-nle`, `nle export-nle`, `nle from-nle`, `nle import-nle`, `nle compare-nle`, `nle nle-compare` |
+| List or deliver outputs | `artifacts list`, `artifacts deliver` | `outputs list`, `artifacts outputs`, `artifacts list-artifacts`, `artifacts publish-artifacts` |
+
+Avoid terms like `auto-crop`, `detect-crop`, or `auto-reframe` unless a future command explicitly implements that behavior. In the current contract, crop/zoom/reframe calibration means a human approves crop presets through the GUI.
+
 ## Status
 
 Current alpha capabilities:
@@ -12,6 +79,7 @@ Current alpha capabilities:
 - Command/schema introspection through `schema`, `agent-context`, `skill-path`, `doctor`, and `audit cli`.
 - Dry-run by default for mutating work, with `--commit` required for writes and `--live` required for provider calls.
 - Local project/media/transcript/cleanup/framing/timeline/render/color/NLE workflows.
+- Managed localhost calibration UI for human-approved crop/zoom/reframe presets, with API endpoints for agent polling, artifact writes, and shutdown.
 - ffprobe and ffmpeg adapters for media inspection, samples, proxy/range extraction, preview rendering, verification, transcript-cut rendering, and LUT application.
 - Live STT adapters for OpenAI, ElevenLabs, Deepgram, AssemblyAI, Gladia, and Soniox.
 - Gemini video QA through inline and Files API upload modes, including uploaded-file polling until `ACTIVE`.
@@ -468,6 +536,20 @@ vflow upgrade \
 ```
 
 `upgrade --commit --install-dir` downloads the matching OS/architecture release archive, verifies it against `checksums.txt`, extracts the `vflow` binary, backs up any existing binary as `vflow.bak`, and atomically installs the replacement.
+
+## Future Features
+
+Planned or intentionally deferred features:
+
+- Exhaustive real-editor roundtrip fixtures from Resolve, Final Cut Pro, Premiere, Shotcut/Kdenlive MLT, and OTIO timelines.
+- Richer calibration ergonomics: keyboard nudging, preset duplication, aspect presets, better safe-zone presets, and visual diffing between crops.
+- Optional review UIs for cleanup decisions, framing review queues, and NLE roundtrip decisions using the same localhost/session model as `framing calibrate`.
+- More complete provenance chains linking transcripts, sync maps, source ranges, render reports, and NLE sidecars.
+- Additional render targets and stricter platform presets for social formats.
+- Deeper provider QA comparison reports that remain redacted and reproducible.
+- Better install/upgrade reporting for local fleet or CI environments.
+
+Future automation should preserve the current safety model: canonical JSON remains owned by `vflow`, writes stay commit-gated, and ambiguous creative decisions route to review instead of being silently invented.
 
 ## Current Known Gap
 

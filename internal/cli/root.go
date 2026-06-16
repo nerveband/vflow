@@ -534,8 +534,8 @@ func jobsCommand(opts *globalOptions) *cobra.Command {
 
 func artifactsCommand(opts *globalOptions) *cobra.Command {
 	var projectPath string
-	parent := &cobra.Command{Use: "artifacts", Short: "artifact commands"}
-	list := &cobra.Command{Use: "list", Short: "list project artifacts", RunE: func(cmd *cobra.Command, args []string) error {
+	parent := &cobra.Command{Use: "artifacts", Aliases: []string{"outputs"}, Short: "artifact commands"}
+	list := &cobra.Command{Use: "list", Aliases: []string{"list-artifacts", "outputs"}, Short: "list project artifacts", RunE: func(cmd *cobra.Command, args []string) error {
 		var artifacts []string
 		_ = filepath.WalkDir(projectPath, func(path string, d os.DirEntry, err error) error {
 			if err == nil && !d.IsDir() {
@@ -550,7 +550,7 @@ func artifactsCommand(opts *globalOptions) *cobra.Command {
 	list.Flags().StringVar(&projectPath, "project", ".", "project path")
 	parent.AddCommand(list)
 	var input, deliver string
-	deliverCmd := &cobra.Command{Use: "deliver", Short: "deliver artifact", RunE: func(cmd *cobra.Command, args []string) error {
+	deliverCmd := &cobra.Command{Use: "deliver", Aliases: []string{"publish-artifacts"}, Short: "deliver artifact", RunE: func(cmd *cobra.Command, args []string) error {
 		if input == "" {
 			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass --input artifact path", false))
 		}
@@ -768,8 +768,9 @@ func projectCommand(opts *globalOptions) *cobra.Command {
 func projectInitCommand(opts *globalOptions) *cobra.Command {
 	var path, id string
 	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "initialize a vflow project folder",
+		Use:     "init",
+		Aliases: []string{"new-project", "create-project"},
+		Short:   "initialize a vflow project folder",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if path == "" {
 				path = "."
@@ -792,8 +793,9 @@ func projectInitCommand(opts *globalOptions) *cobra.Command {
 func projectGetCommand(opts *globalOptions) *cobra.Command {
 	var path string
 	cmd := &cobra.Command{
-		Use:   "get",
-		Short: "read a vflow project contract",
+		Use:     "get",
+		Aliases: []string{"show", "inspect", "inspect-project"},
+		Short:   "read a vflow project contract",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if path == "" {
 				path = "."
@@ -1027,8 +1029,9 @@ func mediaExtractRangesCommand(opts *globalOptions) *cobra.Command {
 func mediaProbeCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, source, probeJSON, ffprobePath string
 	cmd := &cobra.Command{
-		Use:   "probe",
-		Short: "probe source media with ffprobe",
+		Use:     "probe",
+		Aliases: []string{"inspect-media", "analyze-media", "metadata"},
+		Short:   "probe source media with ffprobe",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if projectPath == "" {
 				projectPath = "."
@@ -1087,8 +1090,9 @@ func mediaIngestCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, source string
 	var copySource bool
 	cmd := &cobra.Command{
-		Use:   "ingest",
-		Short: "ingest media into a project",
+		Use:     "ingest",
+		Aliases: []string{"add-media", "import-media"},
+		Short:   "ingest media into a project",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if source == "" {
 				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_SOURCE", "missing --source", "Pass --source /path/to/media", false))
@@ -1127,8 +1131,9 @@ func mediaIngestCommand(opts *globalOptions) *cobra.Command {
 func mediaProxyCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, preset, source, ffmpegPath string
 	cmd := &cobra.Command{
-		Use:   "proxy",
-		Short: "create a proxy render plan",
+		Use:     "proxy",
+		Aliases: []string{"make-proxy", "create-proxy", "transcode-proxy"},
+		Short:   "create a proxy render plan",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if source == "" {
 				source = filepath.Join(projectPath, "media", "source.mp4")
@@ -1215,8 +1220,9 @@ func cleanupCommand(opts *globalOptions) *cobra.Command {
 func cleanupSuggestCommand(opts *globalOptions) *cobra.Command {
 	var projectPath string
 	cmd := &cobra.Command{
-		Use:   "suggest",
-		Short: "suggest cleanup decisions from transcript words",
+		Use:     "suggest",
+		Aliases: []string{"cleanup-plan", "suggest-cleanup"},
+		Short:   "suggest cleanup decisions from transcript words",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			words, err := vtranscript.ReadWords(projectPath)
 			if err != nil {
@@ -1257,8 +1263,9 @@ func cleanupSuggestCommand(opts *globalOptions) *cobra.Command {
 func cleanupReviewCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, deliver string
 	cmd := &cobra.Command{
-		Use:   "review",
-		Short: "review cleanup decisions",
+		Use:     "review",
+		Aliases: []string{"review-cleanup"},
+		Short:   "review cleanup decisions",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			edl, err := vcleanup.ReadContentEDL(projectPath)
 			if err != nil {
@@ -1310,8 +1317,9 @@ func writeCleanupReviewHTML(path string, edl vcleanup.ContentEDL) error {
 func cleanupApplyCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, input, rate string
 	cmd := &cobra.Command{
-		Use:   "apply",
-		Short: "apply accepted cleanup decisions to content-edl.json",
+		Use:     "apply",
+		Aliases: []string{"apply-cleanup"},
+		Short:   "apply accepted cleanup decisions to content-edl.json",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if input == "" {
 				return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass --input delete_segments.json", false))
@@ -1428,7 +1436,7 @@ func cutCreateCommand(opts *globalOptions) *cobra.Command {
 
 func framingCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "framing", Short: "framing workflow commands"}
-	preset := &cobra.Command{Use: "preset", Short: "framing preset commands"}
+	preset := &cobra.Command{Use: "preset", Aliases: []string{"presets"}, Short: "framing preset commands"}
 	preset.AddCommand(framingPresetImportCommand(opts), framingPresetValidateCommand(opts), framingPresetListCommand(opts))
 	parent.AddCommand(preset)
 	parent.AddCommand(framingCalibrateCommand(opts), framingMapSpeakersCommand(opts), framingProposeCommand(opts), framingCompileCommand(opts), framingReviewCommand(opts))
@@ -1491,8 +1499,9 @@ func framingCalibrateCommand(opts *globalOptions) *cobra.Command {
 func framingMapSpeakersCommand(opts *globalOptions) *cobra.Command {
 	var projectPath string
 	cmd := &cobra.Command{
-		Use:   "map-speakers",
-		Short: "map transcript speaker labels to stable framing presets",
+		Use:     "map-speakers",
+		Aliases: []string{"speaker-map", "map-speaker", "assign-speakers"},
+		Short:   "map transcript speaker labels to stable framing presets",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			words, err := vtranscript.ReadWords(projectPath)
 			if err != nil {
@@ -1577,8 +1586,9 @@ func framingProposeCommand(opts *globalOptions) *cobra.Command {
 func framingCompileCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, input string
 	cmd := &cobra.Command{
-		Use:   "compile",
-		Short: "compile an approved framing lane",
+		Use:     "compile",
+		Aliases: []string{"apply-framing", "compile-framing", "build-framing"},
+		Short:   "compile an approved framing lane",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if input != "" {
 				return writeStructuredError(cmd, opts, verrors.Validation("FRAMING_INPUT_UNSUPPORTED", "--input is not used by the contract compiler", "Use calibration/framing-presets.json, calibration/speaker-map.json, policy/framing-policy.json, and transcript/words.json", false))
@@ -1734,8 +1744,9 @@ func timelineCommand(opts *globalOptions) *cobra.Command {
 func timelineVerifyCommand(opts *globalOptions) *cobra.Command {
 	var projectPath string
 	cmd := &cobra.Command{
-		Use:   "verify",
-		Short: "verify compiled timeline",
+		Use:     "verify",
+		Aliases: []string{"verify-timeline", "check-timeline"},
+		Short:   "verify compiled timeline",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := filepath.Join(projectPath, "timeline", "compiled-timeline.json")
 			raw, err := os.ReadFile(path)
@@ -1772,8 +1783,9 @@ func timelineCompileCommand(opts *globalOptions) *cobra.Command {
 	var projectPath string
 	var durationFrames int64
 	cmd := &cobra.Command{
-		Use:   "compile",
-		Short: "compile content decisions into time-map and timeline artifacts",
+		Use:     "compile",
+		Aliases: []string{"build-timeline", "make-timeline", "assemble"},
+		Short:   "compile content decisions into time-map and timeline artifacts",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			edl := vcleanup.ContentEDL{Version: "vflow-content-edl/v1"}
 			if readEDL, err := vcleanup.ReadContentEDL(projectPath); err == nil {
@@ -1981,8 +1993,9 @@ func renderPreviewCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, source, target, ffmpegPath, outputPath string
 	var duration, startSeconds float64
 	cmd := &cobra.Command{
-		Use:   "preview",
-		Short: "render a rough preview with ffmpeg",
+		Use:     "preview",
+		Aliases: []string{"make-preview", "render-sample"},
+		Short:   "render a rough preview with ffmpeg",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			output := outputPath
 			if output == "" {
@@ -2152,8 +2165,9 @@ func renderVerifyCommand(opts *globalOptions) *cobra.Command {
 	var expectedWidth, expectedHeight int
 	var expectedDuration float64
 	cmd := &cobra.Command{
-		Use:   "verify",
-		Short: "verify a rendered preview",
+		Use:     "verify",
+		Aliases: []string{"verify-render", "check-render", "qa-render"},
+		Short:   "verify a rendered preview",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if renderPath != "" && !filepath.IsAbs(renderPath) {
 				renderPath = projectRelativePath(projectPath, renderPath)
@@ -2736,8 +2750,9 @@ func nleCommand(opts *globalOptions) *cobra.Command {
 func nleExportCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, target, deliver, syncMapPath string
 	cmd := &cobra.Command{
-		Use:   "export",
-		Short: "export timeline to NLE interchange format",
+		Use:     "export",
+		Aliases: []string{"export-nle", "to-nle"},
+		Short:   "export timeline to NLE interchange format",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !vnle.ValidTarget(target) {
 				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported NLE export target", "Use one of: edl, fcpxml, resolve, premiere, mlt, otio, sidecar", false))
@@ -2783,7 +2798,7 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 
 func nleImportCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, input string
-	cmd := &cobra.Command{Use: "import", Short: "import NLE timeline", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "import", Aliases: []string{"import-nle", "from-nle"}, Short: "import NLE timeline", RunE: func(cmd *cobra.Command, args []string) error {
 		if input == "" {
 			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass --input timeline file", false))
 		}
@@ -2816,7 +2831,7 @@ func nleImportCommand(opts *globalOptions) *cobra.Command {
 
 func nleDiffCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, input, deliver string
-	cmd := &cobra.Command{Use: "diff", Short: "classify NLE roundtrip diff", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "diff", Aliases: []string{"compare-nle", "nle-compare"}, Short: "classify NLE roundtrip diff", RunE: func(cmd *cobra.Command, args []string) error {
 		if input == "" {
 			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --import", "Pass --import timeline or nle-import.json", false))
 		}
@@ -3018,7 +3033,7 @@ func nleApplyCommand(opts *globalOptions) *cobra.Command {
 }
 
 func transcriptCommand(opts *globalOptions) *cobra.Command {
-	parent := &cobra.Command{Use: "transcript", Short: "transcript workflow commands"}
+	parent := &cobra.Command{Use: "transcript", Aliases: []string{"transcribe"}, Short: "transcript workflow commands"}
 	parent.AddCommand(transcriptCreateCommand(opts), transcriptImportCommand(opts), transcriptAlignCommand(opts), transcriptBakeoffCommand(opts), transcriptSearchCommand(opts), transcriptSyncCommand(opts))
 	return parent
 }
@@ -3027,8 +3042,9 @@ func transcriptSyncCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, syncMapPath, outputPath, anchorID, method, text string
 	var transcriptSeconds, referenceSeconds, confidence float64
 	cmd := &cobra.Command{
-		Use:   "sync",
-		Short: "record transcript-to-reference timing in a sync map",
+		Use:     "sync",
+		Aliases: []string{"sync-transcript-timing"},
+		Short:   "record transcript-to-reference timing in a sync map",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if syncMapPath == "" {
 				syncMapPath = filepath.Join(projectPath, "calibration", "media-sync-map.json")
@@ -3082,8 +3098,9 @@ func transcriptSyncCommand(opts *globalOptions) *cobra.Command {
 func transcriptImportCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, provider, input, rate string
 	cmd := &cobra.Command{
-		Use:   "import",
-		Short: "import transcript data into canonical words.json",
+		Use:     "import",
+		Aliases: []string{"load-transcript", "ingest-transcript"},
+		Short:   "import transcript data into canonical words.json",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !validProvider(provider) {
 				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported provider", "Use one of: plain-text, generic-words, local", false))
@@ -3125,8 +3142,9 @@ func transcriptImportCommand(opts *globalOptions) *cobra.Command {
 func transcriptCreateCommand(opts *globalOptions) *cobra.Command {
 	var projectPath, provider, source, model, rate string
 	cmd := &cobra.Command{
-		Use:   "create",
-		Short: "create a transcript with a local or live provider",
+		Use:     "create",
+		Aliases: []string{"transcribe", "speech-to-text", "stt"},
+		Short:   "create a transcript with a local or live provider",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if provider != "" && !validProvider(provider) {
 				return writeStructuredError(cmd, opts, verrors.Validation(
@@ -3219,8 +3237,9 @@ func transcriptCreateCommand(opts *globalOptions) *cobra.Command {
 func transcriptAlignCommand(opts *globalOptions) *cobra.Command {
 	var projectPath string
 	cmd := &cobra.Command{
-		Use:   "align",
-		Short: "write a transcript alignment summary",
+		Use:     "align",
+		Aliases: []string{"sync-transcript", "align-words", "word-align"},
+		Short:   "write a transcript alignment summary",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			words, err := vtranscript.ReadWords(projectPath)
 			if err != nil {
