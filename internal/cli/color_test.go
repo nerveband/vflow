@@ -90,3 +90,24 @@ func TestColorApplyCommitRecordsColorInRenderReport(t *testing.T) {
 		}
 	}
 }
+
+func TestColorApplyRejectsInvalidIntent(t *testing.T) {
+	project := t.TempDir()
+	out, errOut, code := runCLI(t,
+		"color", "apply",
+		"--project", project,
+		"--input", "renders/rough-preview.mp4",
+		"--lut", "calibration/look.cube",
+		"--intent", "review",
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code == 0 {
+		t.Fatalf("expected invalid intent failure, stdout=%s stderr=%s", out, errOut)
+	}
+	for _, want := range []string{`"code": "INVALID_ENUM"`, "Use --intent preview or --intent final"} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("expected %q in stderr:\n%s", want, errOut)
+		}
+	}
+}

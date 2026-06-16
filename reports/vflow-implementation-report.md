@@ -546,3 +546,23 @@ Verification:
 go test ./internal/cli -run 'TestColor|TestRender' -v
 go test ./internal/color ./internal/render
 ```
+
+## 2026-06-16 Render Report Schema Hardening
+
+Implemented:
+
+- `schemas/render-report.schema.json` now describes the versioned render report contract instead of accepting any object.
+- The schema includes the committed `color` metadata object with required ungraded/graded paths, LUT path, LUT SHA-256, ffmpeg filtergraph, warnings, preview/final intent, and QA report references.
+- `vflow color apply` now rejects unsupported `--intent` values before reading LUTs or running ffmpeg, preserving the schema enum.
+- Added regression coverage for invalid intent handling and render-report color schema fields.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'TestColor|TestRenderReportSchema|TestSchemaValidate' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```

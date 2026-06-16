@@ -1,1 +1,76 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"render report","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "render report",
+  "type": "object",
+  "required": ["version", "status"],
+  "properties": {
+    "version": {
+      "const": "vflow-render-report/v1"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "rendered", "verified", "failed"]
+    },
+    "render_path": {
+      "type": "string"
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "target": {
+      "type": "string"
+    },
+    "color": {
+      "type": "object",
+      "required": [
+        "ungraded_render_path",
+        "graded_render_path",
+        "lut_path",
+        "lut_sha256",
+        "ffmpeg_filtergraph",
+        "warnings",
+        "intent",
+        "qa_report_refs"
+      ],
+      "properties": {
+        "ungraded_render_path": {
+          "type": "string"
+        },
+        "graded_render_path": {
+          "type": "string"
+        },
+        "lut_path": {
+          "type": "string"
+        },
+        "lut_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "ffmpeg_filtergraph": {
+          "type": "string"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "intent": {
+          "type": "string",
+          "enum": ["preview", "final"]
+        },
+        "qa_report_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

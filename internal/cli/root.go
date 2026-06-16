@@ -2490,6 +2490,13 @@ func colorApplyCommand(opts *globalOptions) *cobra.Command {
 		Use:   "apply",
 		Short: "apply a .cube LUT with ffmpeg",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			intent = strings.TrimSpace(intent)
+			if intent == "" {
+				intent = "preview"
+			}
+			if intent != "preview" && intent != "final" {
+				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported color intent", "Use --intent preview or --intent final", false))
+			}
 			raw, err := os.ReadFile(lut)
 			if err != nil {
 				return writeStructuredError(cmd, opts, verrors.External("LUT_READ_FAILED", err.Error(), "Check --lut path", false))
