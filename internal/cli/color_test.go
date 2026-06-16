@@ -2,6 +2,7 @@ package cli
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,8 +25,16 @@ func TestColorReviewCommitWritesReportWithoutLiveProvider(t *testing.T) {
 		t.Fatalf("color review failed: code=%d stdout=%s stderr=%s", code, out, errOut)
 	}
 	reportPath := filepath.Join(project, "reports", "color-grade-report.json")
-	if _, err := os.Stat(reportPath); err != nil {
+	raw, err := os.ReadFile(reportPath)
+	if err != nil {
 		t.Fatalf("expected report: %v", err)
+	}
+	var report map[string]any
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatalf("invalid report json: %v\n%s", err, raw)
+	}
+	if report["status"] != "written" {
+		t.Fatalf("expected persisted report status written, got %#v in %s", report["status"], raw)
 	}
 	if !strings.Contains(out, `"status": "written"`) || !strings.Contains(out, "color-grade-report.json") {
 		t.Fatalf("unexpected output: %s", out)
@@ -106,6 +115,23 @@ func TestColorApplyRejectsInvalidIntent(t *testing.T) {
 		t.Fatalf("expected invalid intent failure, stdout=%s stderr=%s", out, errOut)
 	}
 	for _, want := range []string{`"code": "INVALID_ENUM"`, "Use --intent preview or --intent final"} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("expected %q in stderr:\n%s", want, errOut)
+		}
+	}
+}
+
+func TestColorReviewRejectsUnsupportedProvider(t *testing.T) {
+	out, errOut, code := runCLI(t,
+		"color", "review",
+		"--provider", "openai",
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code == 0 {
+		t.Fatalf("expected unsupported provider failure, stdout=%s stderr=%s", out, errOut)
+	}
+	for _, want := range []string{`"code": "INVALID_ENUM"`, "Use provider gemini"} {
 		if !strings.Contains(errOut, want) {
 			t.Fatalf("expected %q in stderr:\n%s", want, errOut)
 		}

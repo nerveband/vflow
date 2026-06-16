@@ -2548,6 +2548,9 @@ func colorReviewCommand(opts *globalOptions) *cobra.Command {
 		Use:   "review",
 		Short: "review color/exposure with optional Gemini analysis",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if provider != "gemini" {
+				return writeStructuredError(cmd, opts, verrors.Validation("INVALID_ENUM", "unsupported color review provider", "Use provider gemini", false))
+			}
 			reportPath := filepath.Join(projectPath, "reports", "color-grade-report.json")
 			data := map[string]any{
 				"version":    "vflow-color-grade-report/v1",
@@ -2563,7 +2566,7 @@ func colorReviewCommand(opts *globalOptions) *cobra.Command {
 					"confidence": 0.5,
 				}},
 			}
-			if opts.Live && provider == "gemini" {
+			if opts.Live {
 				key, _, err := geminiAPIKey(keyEnv)
 				if err != nil {
 					return writeStructuredError(cmd, opts, verrors.Validation("INVALID_KEY_ENV", err.Error(), "Pass an environment variable name such as GEMINI_API_KEY", false))
@@ -2579,15 +2582,15 @@ func colorReviewCommand(opts *globalOptions) *cobra.Command {
 				data["status"] = "analyzed"
 			}
 			if opts.Commit {
+				if data["status"] == "planned" {
+					data["status"] = "written"
+				}
 				if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("COLOR_REPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
 				}
 				raw, _ := json.MarshalIndent(data, "", "  ")
 				if err := os.WriteFile(reportPath, append(raw, '\n'), 0o644); err != nil {
 					return writeStructuredError(cmd, opts, verrors.External("COLOR_REPORT_WRITE_FAILED", err.Error(), "Check project write permissions", false))
-				}
-				if data["status"] == "planned" {
-					data["status"] = "written"
 				}
 			}
 			return writeOutput(cmd, opts, "color review", data)

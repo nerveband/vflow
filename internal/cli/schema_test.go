@@ -78,3 +78,40 @@ func TestRenderReportSchemaDocumentsColorMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestColorGradeReportSchemaDocumentsReviewContract(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "color-grade-report.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("invalid color grade report schema json: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if got := properties["version"].(map[string]any)["const"]; got != "vflow-color-grade-report/v1" {
+		t.Fatalf("version const = %#v", got)
+	}
+	statusEnum := properties["status"].(map[string]any)["enum"].([]any)
+	for _, want := range []string{"planned", "written", "analyzed"} {
+		found := false
+		for _, got := range statusEnum {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("status enum missing %q in %#v", want, statusEnum)
+		}
+	}
+	providerEnum := properties["provider"].(map[string]any)["enum"].([]any)
+	if len(providerEnum) != 1 || providerEnum[0] != "gemini" {
+		t.Fatalf("unexpected provider enum: %#v", providerEnum)
+	}
+	observations := properties["observations"].(map[string]any)
+	itemProperties := observations["items"].(map[string]any)["properties"].(map[string]any)
+	if got := itemProperties["confidence"].(map[string]any)["maximum"]; got != float64(1) {
+		t.Fatalf("observation confidence maximum = %#v", got)
+	}
+}

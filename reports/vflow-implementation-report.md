@@ -566,3 +566,24 @@ go run ./cmd/vflow schema --validate --format json --format-error json
 go run ./cmd/vflow doctor --format json --format-error json
 go run ./cmd/vflow audit cli --format json --format-error json
 ```
+
+## 2026-06-16 Color Grade Report Schema Hardening
+
+Implemented:
+
+- `schemas/color-grade-report.schema.json` now describes the versioned color review report contract instead of accepting any object.
+- The schema requires provider, model, input, report path, confidence, observations, and the optional raw provider response field.
+- `vflow color review` now rejects unsupported providers with structured `INVALID_ENUM`.
+- Committed non-live color review reports now persist `status: written`, matching the CLI response instead of leaving the file as `planned`.
+- Added regression coverage for persisted report status, unsupported provider errors, and color-grade report schema fields.
+
+Verification:
+
+```bash
+go test ./internal/cli -run 'TestColor|TestColorGradeReportSchema|TestSchemaValidate' -v
+go test ./...
+go vet ./...
+go run ./cmd/vflow schema --validate --format json --format-error json
+go run ./cmd/vflow doctor --format json --format-error json
+go run ./cmd/vflow audit cli --format json --format-error json
+```
