@@ -21,6 +21,7 @@ This audit checks the active goal against current repo state and command output.
 - Live Gemini-backed `color review` completed and wrote `work/live-provider-proof/gemini/reports/color-grade-report.json`.
 - Gemini provider responses are sanitized so transient `thoughtSignature` payloads are not emitted in committed CLI reports.
 - Command contract registry now includes all implemented plan-listed top-level/framing command surfaces that were previously missing from schema output: `feedback`, `framing propose`, and `framing review`.
+- NLE self-roundtrip fixture coverage now parses vflow exports back from EDL, FCPXML/Resolve, Premiere XMEML, MLT, and OTIO; all preserve `seg_A` identity for `clip_trim` and classify without unclassified changes.
 - Copied CAIR-GA fixture probe recognized four copied 3840x2160 source-camera clips under `media/source-4k`.
 - Actual CAIR-GA 30-second CLI render wrote `work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/cair-ga-actual-30s.mp4` from copied source-camera media and verified as 1920x1080 H.264/AAC.
 - Ignored `work/` and `tmp/` proof artifacts were not tracked into the public repo.
@@ -47,8 +48,8 @@ This audit checks the active goal against current repo state and command output.
 
 ## Not Yet Fully Proven
 
-- NLE roundtrip support is structured and tested for representative artifacts, but it is not yet exhaustively proven against real exported projects from every target editor.
-- Editor-specific NLE proof still needs real Resolve/FCP/Premiere/Shotcut/OTIO exported timelines for broader compatibility coverage.
+- NLE roundtrip support is structured and tested for vflow-generated interchange artifacts across every target adapter, plus representative FCPXML editor-style changes. It is not yet exhaustively proven against real exported projects from every target editor.
+- Editor-specific NLE proof still needs real Resolve/FCP/Premiere/Shotcut/OTIO exported timelines for compatibility beyond vflow-generated fixtures.
 
 ## Current Decision
 

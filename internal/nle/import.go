@@ -83,6 +83,8 @@ func parseXMLChanges(raw []byte) ([]Change, error) {
 	decoder := xml.NewDecoder(bytes.NewReader(raw))
 	changes := []Change{}
 	currentSegment := ""
+	pendingTiming := false
+	captureSegmentText := ""
 
 	for {
 		token, err := decoder.Token()
@@ -101,11 +103,23 @@ func parseXMLChanges(raw []byte) ([]Change, error) {
 			case "asset-clip":
 				currentSegment = firstNonEmpty(attrs["name"], attrs["id"], attrs["ref"], currentSegment)
 				if hasAnyAttr(attrs, "start", "duration", "offset") {
-					changes = appendUniqueChange(changes, "clip_trim", currentSegment, "clip timing changed in NLE timeline", 0.90)
+					pendingTiming = true
 				}
 			case "clipitem", "entry":
 				currentSegment = firstNonEmpty(attrs["name"], attrs["id"], attrs["producer"], currentSegment)
-				changes = appendUniqueChange(changes, "clip_trim", currentSegment, "clip timing changed in NLE timeline", 0.75)
+				pendingTiming = true
+			case "name":
+				if pendingTiming {
+					captureSegmentText = "name"
+				}
+			case "comments":
+				if pendingTiming {
+					captureSegmentText = "comments"
+				}
+			case "property":
+				if strings.EqualFold(attrs["name"], "vflow:segment-id") {
+					captureSegmentText = "property"
+				}
 			case "marker":
 				segmentID := firstNonEmpty(segmentIDFromText(attrs["note"]), attrs["value"], currentSegment)
 				changes = appendUniqueChange(changes, "marker_note", segmentID, "marker note changed in NLE timeline", 0.95)
@@ -130,9 +144,23 @@ func parseXMLChanges(raw []byte) ([]Change, error) {
 				currentSegment = firstNonEmpty(attrs["name"], attrs["id"], currentSegment)
 				changes = appendUniqueChange(changes, "nested_timeline", currentSegment, "nested timeline reference changed in NLE timeline", 0.80)
 			}
+		case xml.CharData:
+			if captureSegmentText != "" {
+				text := strings.TrimSpace(string(t))
+				if text != "" {
+					currentSegment = firstNonEmpty(segmentIDFromText(text), text, currentSegment)
+				}
+			}
 		case xml.EndElement:
 			name := strings.ToLower(t.Name.Local)
+			if name == "name" || name == "comments" || name == "property" {
+				captureSegmentText = ""
+			}
 			if name == "asset-clip" || name == "clipitem" || name == "entry" || name == "title" || name == "generatoritem" {
+				if pendingTiming && (name == "asset-clip" || name == "clipitem" || name == "entry") {
+					changes = appendUniqueChange(changes, "clip_trim", currentSegment, "clip timing changed in NLE timeline", 0.75)
+					pendingTiming = false
+				}
 				currentSegment = ""
 			}
 		}
@@ -191,6 +219,9 @@ func parseEDLChanges(raw []byte) []Change {
 		upper := strings.ToUpper(trimmed)
 		if strings.HasPrefix(upper, "* VFLOW-SEGMENT-ID:") {
 			segmentID = strings.TrimSpace(trimmed[strings.Index(trimmed, ":")+1:])
+			if len(changes) > 0 && changes[len(changes)-1].Type == "clip_trim" && changes[len(changes)-1].SegmentID == "" {
+				changes[len(changes)-1].SegmentID = segmentID
+			}
 			continue
 		}
 		if eventLine.MatchString(trimmed) {

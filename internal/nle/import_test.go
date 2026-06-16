@@ -20,6 +20,34 @@ func TestParseImportDetectsFCPXMLRoundtripChanges(t *testing.T) {
 	}
 }
 
+func TestParseImportsFromAllExportTargetsPreserveSegmentIdentity(t *testing.T) {
+	segments := []Segment{{ID: "seg_A", SourceFrameIn: 12, SourceFrameOut: 60, TimelineFrameIn: 0, TimelineFrameOut: 48}}
+	opts := Options{SourceMediaID: "camera_a", SourceURL: "file:///camera-a.mp4", Rate: 24}
+	for _, target := range []string{"edl", "fcpxml", "resolve", "premiere", "mlt", "otio"} {
+		t.Run(target, func(t *testing.T) {
+			opts.Target = target
+			input := "timeline." + target
+			if target == "resolve" {
+				input = "timeline.fcpxml"
+			}
+			result, err := ParseImport(input, []byte(exportText(Export(opts, segments))))
+			if err != nil {
+				t.Fatalf("ParseImport(%s) returned error: %v", target, err)
+			}
+			if !hasChangeType(result.Changes, "clip_trim") {
+				t.Fatalf("%s import missing clip_trim: %+v", target, result.Changes)
+			}
+			if got := segmentForType(result.Changes, "clip_trim"); got != "seg_A" {
+				t.Fatalf("%s import did not preserve segment id: got %q changes=%+v", target, got, result.Changes)
+			}
+			diff := Classify(result)
+			if len(diff.Unclassified) != 0 || len(diff.SafeMerge) == 0 {
+				t.Fatalf("%s diff should classify exported fixture cleanly: %+v", target, diff)
+			}
+		})
+	}
+}
+
 func hasChangeType(changes []Change, typ string) bool {
 	for _, change := range changes {
 		if change.Type == typ {
