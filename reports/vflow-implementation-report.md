@@ -425,7 +425,9 @@ Result:
 - After rotating/restarting Codex, `qa doctor` passed with `gemini-3.5-flash` through `env:GEMINI_API_KEY`.
 - `qa analyze --upload inline` succeeded on the graded 30-second render with `modelVersion: gemini-3.5-flash`, wrote `reports/gemini-video-qa.json`, and returned video-token usage metadata.
 - `color review` succeeded on the graded render with `modelVersion: gemini-3.5-flash`, wrote `reports/color-grade-report.json`, and returned color/exposure notes.
-- `qa analyze --upload files` still failed in the Files API path with `API_KEY_INVALID`; the official Go SDK `Files.UploadFromPath` probe failed the same way for this key/project. Inline video remains the verified working path for this fixture-sized render.
+- Root cause for the earlier Files API failure was auth placement on the resumable upload flow. Direct REST probing against Google's documented shell flow showed `media.upload` succeeds when the upload-start URL carries `?key=...`; header-only auth produced misleading `API_KEY_INVALID` failures on the upload/poll lifecycle.
+- `vflow` now puts the API key in the Files API upload-start and file-get query strings while keeping `generateContent` on `x-goog-api-key`.
+- `qa analyze --upload files` now succeeds on the graded 30-second render with `gemini-3.5-flash`; the uploaded file reached `ACTIVE`, Gemini returned video-token usage metadata, and `reports/gemini-video-qa.json` was written.
 
 ## 2026-06-15 Framing Compiler Hardening
 

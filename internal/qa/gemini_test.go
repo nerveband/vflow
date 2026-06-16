@@ -77,6 +77,9 @@ func TestAnalyzeFileVideoUploadsThenUsesFileData(t *testing.T) {
 		switch r.URL.Path {
 		case "/upload/v1beta/files":
 			startSeen = true
+			if got := r.URL.Query().Get("key"); got != "test-key" {
+				t.Fatalf("upload start missing api key query: %q", got)
+			}
 			if got := r.Header.Get("X-Goog-Upload-Protocol"); got != "resumable" {
 				t.Fatalf("upload protocol = %q", got)
 			}
@@ -87,15 +90,15 @@ func TestAnalyzeFileVideoUploadsThenUsesFileData(t *testing.T) {
 			_, _ = w.Write([]byte(`{}`))
 		case "/upload-session":
 			uploadSeen = true
-			if got := r.Header.Get("x-goog-api-key"); got != "test-key" {
-				t.Fatalf("final upload missing api key header: %q", got)
-			}
 			if got := r.Header.Get("X-Goog-Upload-Command"); got != "upload, finalize" {
 				t.Fatalf("final upload command = %q", got)
 			}
 			_, _ = w.Write([]byte(`{"file":{"name":"files/abc","uri":"https://files.example/video","mimeType":"video/mp4","state":"PROCESSING"}}`))
 		case "/v1beta/files/abc":
 			getSeen = true
+			if got := r.URL.Query().Get("key"); got != "test-key" {
+				t.Fatalf("file get missing api key query: %q", got)
+			}
 			_, _ = w.Write([]byte(`{"name":"files/abc","uri":"https://files.example/video","mimeType":"video/mp4","state":"ACTIVE"}`))
 		case "/v1beta/models/gemini-3-flash-preview:generateContent":
 			generateSeen = true

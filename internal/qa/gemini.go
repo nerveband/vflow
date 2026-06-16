@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -251,11 +252,10 @@ func UploadFile(apiKey, path string) (UploadedFile, error) {
 		mimeType = "video/mp4"
 	}
 	startBody, _ := json.Marshal(map[string]any{"file": map[string]string{"display_name": filepath.Base(path)}})
-	startReq, err := http.NewRequest(http.MethodPost, geminiUploadURL, bytes.NewReader(startBody))
+	startReq, err := http.NewRequest(http.MethodPost, withAPIKey(geminiUploadURL, apiKey), bytes.NewReader(startBody))
 	if err != nil {
 		return UploadedFile{}, err
 	}
-	startReq.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
 	startReq.Header.Set("X-Goog-Upload-Protocol", "resumable")
 	startReq.Header.Set("X-Goog-Upload-Command", "start")
 	startReq.Header.Set("X-Goog-Upload-Header-Content-Length", fmt.Sprint(fileInfo.Size()))
@@ -284,7 +284,6 @@ func UploadFile(apiKey, path string) (UploadedFile, error) {
 	}
 	uploadReq.Header.Set("Content-Length", fmt.Sprint(len(video)))
 	uploadReq.Header.Set("Content-Type", mimeType)
-	uploadReq.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
 	uploadReq.Header.Set("X-Goog-Upload-Offset", "0")
 	uploadReq.Header.Set("X-Goog-Upload-Command", "upload, finalize")
 	uploadResp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(uploadReq)
@@ -390,11 +389,10 @@ func WaitForFileActive(apiKey string, file UploadedFile, timeout, interval time.
 }
 
 func getUploadedFile(apiKey, name string) (UploadedFile, error) {
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(geminiFileBaseURL, "/")+"/"+strings.TrimLeft(name, "/"), nil)
+	req, err := http.NewRequest(http.MethodGet, withAPIKey(strings.TrimRight(geminiFileBaseURL, "/")+"/"+strings.TrimLeft(name, "/"), apiKey), nil)
 	if err != nil {
 		return UploadedFile{}, err
 	}
-	req.Header.Set("x-goog-api-key", strings.TrimSpace(apiKey))
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
 		return UploadedFile{}, err
@@ -414,6 +412,17 @@ func getUploadedFile(apiKey, name string) (UploadedFile, error) {
 		return UploadedFile{}, err
 	}
 	return UploadedFile{Name: parsed.Name, URI: parsed.URI, MIMEType: parsed.MIMEType, State: parsed.State}, nil
+}
+
+func withAPIKey(rawURL, apiKey string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	query := parsed.Query()
+	query.Set("key", strings.TrimSpace(apiKey))
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func SanitizeProviderResponse(raw string) json.RawMessage {
