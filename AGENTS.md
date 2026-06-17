@@ -18,7 +18,7 @@
   - commit the change;
   - create the next semver patch tag;
   - push the branch and tag so the GitHub Actions GoReleaser workflow publishes a GitHub Release;
-  - verify the published release and run `vflow upgrade --format json --format-error json` on this computer.
+  - verify the published release and run `vflow upgrade --commit --install-dir "$HOME/.local/bin" --format json --format-error json` on this computer.
 - Do not call CLI work done while it only exists as a local dev binary. Done means docs updated, committed, released, and the installed `~/.local/bin/vflow` can upgrade to the released binary.
 - Run the full local gate before claiming CLI work is done:
   - `go test ./...`
@@ -39,7 +39,7 @@
 - After a release, verify the installed binary on this computer:
   - `command -v vflow`
   - `vflow version --format json --format-error json`
-  - `vflow upgrade --format json --format-error json`
+  - `vflow upgrade --commit --install-dir "$HOME/.local/bin" --format json --format-error json`
 - The intended user-facing updater is `vflow upgrade`: it should get the latest official binary straight from GitHub Releases, verify `checksums.txt`, back up the existing binary, and install the replacement.
 - Agent and CI workflows must preserve structured JSON output and explicit safety semantics. If an upgrade path mutates the local machine, the implementation must make that behavior clear in JSON and tests.
 - The installer script is a bootstrap path for machines without `vflow` on `PATH`; once installed, prefer testing the native `vflow upgrade` command.
