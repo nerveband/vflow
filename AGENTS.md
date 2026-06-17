@@ -11,6 +11,15 @@
 ## Build, Test, and Release Process
 
 - Build the local CLI with `go build -o bin/vflow ./cmd/vflow`.
+- Every completed feature, bug fix, workflow change, or user-visible behavior change must include the full finish path before handoff unless the user explicitly says not to release:
+  - update `README.md`, bundled skills/docs, schemas, and examples that are affected by the change;
+  - run the full local gate below;
+  - build and install the local binary on this Mac;
+  - commit the change;
+  - create the next semver patch tag;
+  - push the branch and tag so the GitHub Actions GoReleaser workflow publishes a GitHub Release;
+  - verify the published release and run `vflow upgrade --format json --format-error json` on this computer.
+- Do not call CLI work done while it only exists as a local dev binary. Done means docs updated, committed, released, and the installed `~/.local/bin/vflow` can upgrade to the released binary.
 - Run the full local gate before claiming CLI work is done:
   - `go test ./...`
   - `go vet ./...`
