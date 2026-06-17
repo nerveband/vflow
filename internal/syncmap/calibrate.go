@@ -3,7 +3,9 @@ package syncmap
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -23,6 +25,7 @@ type CalibrationOptions struct {
 	ProofDir          string        `json:"proof_dir,omitempty"`
 	FFmpegPath        string        `json:"ffmpeg_path,omitempty"`
 	MaxLagSeconds     float64       `json:"max_lag_seconds,omitempty"`
+	Windows           int           `json:"windows,omitempty"`
 	FrameRate         string        `json:"frame_rate,omitempty"`
 	Commit            bool          `json:"commit,omitempty"`
 }
@@ -48,39 +51,53 @@ func Calibrate(ctx context.Context, opts CalibrationOptions) (CalibrationReport,
 	if opts.MaxLagSeconds <= 0 {
 		opts.MaxLagSeconds = 90
 	}
+	if opts.Windows <= 0 {
+		opts.Windows = 1
+	}
 	if opts.ProofDir == "" {
 		opts.ProofDir = filepath.Join(filepath.Dir(opts.OutputPath), "sync-proof")
 	}
 	sources := make([]SourceSync, 0, len(opts.Sources))
 	extractPlans := []AudioExtractPlan{}
 	waveformPlans := []AudioExtractPlan{}
-	envelopes := map[string][]float64{}
+	envelopes := map[string][][]float64{}
 	referenceFound := false
 	for _, src := range opts.Sources {
 		if src.ID == opts.ReferenceSourceID {
 			referenceFound = true
 		}
-		pcm := filepath.Join(opts.ProofDir, sanitizeID(src.ID)+".s16le")
 		duration := src.WindowDuration
 		if duration <= 0 {
 			duration = 45
 		}
-		extract := BuildAudioExtractPlan(opts.FFmpegPath, src.Path, pcm, src.AudioStreamIndex, src.WindowStart, duration)
-		waveform := BuildWaveformPlan(opts.FFmpegPath, pcm, filepath.Join(opts.ProofDir, sanitizeID(src.ID)+".waveform.png"), extract.SampleRate)
-		extractPlans = append(extractPlans, extract)
-		waveformPlans = append(waveformPlans, waveform)
-		if opts.Commit {
-			if err := RunPlan(ctx, extract); err != nil {
-				return CalibrationReport{}, err
+		for window := 0; window < opts.Windows; window++ {
+			suffix := ""
+			if opts.Windows > 1 {
+				suffix = fmt.Sprintf("-w%02d", window+1)
 			}
-			env, err := ReadPCMEnvelope(pcm, extract.SampleRate)
-			if err != nil {
-				return CalibrationReport{}, err
+			pcm := filepath.Join(opts.ProofDir, sanitizeID(src.ID)+suffix+".s16le")
+			start := src.WindowStart + float64(window)*duration*2
+			extract := BuildAudioExtractPlan(opts.FFmpegPath, src.Path, pcm, src.AudioStreamIndex, start, duration)
+			waveform := BuildWaveformPlan(opts.FFmpegPath, pcm, filepath.Join(opts.ProofDir, sanitizeID(src.ID)+suffix+".waveform.png"), extract.SampleRate)
+			extractPlans = append(extractPlans, extract)
+			waveformPlans = append(waveformPlans, waveform)
+			if opts.Commit {
+				if err := RunPlan(ctx, extract); err != nil {
+					return CalibrationReport{}, err
+				}
+				env, err := ReadPCMEnvelope(pcm, extract.SampleRate)
+				if err != nil {
+					return CalibrationReport{}, err
+				}
+				envelopes[src.ID] = append(envelopes[src.ID], env)
+				_ = RunPlan(ctx, waveform)
 			}
-			envelopes[src.ID] = env
-			_ = RunPlan(ctx, waveform)
 		}
-		sources = append(sources, SourceSync{ID: src.ID, Path: src.Path, AudioStreamIndex: src.AudioStreamIndex, Confidence: 1})
+		sync := SourceSync{ID: src.ID, Path: src.Path, AudioStreamIndex: src.AudioStreamIndex, Confidence: 1}
+		if src.ID != opts.ReferenceSourceID && opts.Windows > 1 {
+			sync.Warnings = append(sync.Warnings, fmt.Sprintf("audio sync voted across %d windows", opts.Windows))
+		}
+		sources = append(sources, sync)
 	}
 	if !referenceFound {
 		return CalibrationReport{}, fmt.Errorf("reference source %q not found", opts.ReferenceSourceID)
@@ -91,10 +108,16 @@ func Calibrate(ctx context.Context, opts CalibrationOptions) (CalibrationReport,
 			if sources[i].ID == opts.ReferenceSourceID {
 				continue
 			}
-			result, err := Correlate(ref, envelopes[sources[i].ID], EnvelopeRate, opts.MaxLagSeconds)
-			if err != nil {
-				return CalibrationReport{}, err
+			results := []CorrelationResult{}
+			sourceEnvelopes := envelopes[sources[i].ID]
+			for window := 0; window < min(len(ref), len(sourceEnvelopes)); window++ {
+				result, err := Correlate(ref[window], sourceEnvelopes[window], EnvelopeRate, opts.MaxLagSeconds)
+				if err != nil {
+					return CalibrationReport{}, err
+				}
+				results = append(results, result)
 			}
+			result := voteCorrelations(results)
 			sources[i].OffsetFromReferenceSeconds = result.LagSeconds
 			sources[i].Confidence = result.Confidence
 		}
@@ -104,7 +127,7 @@ func Calibrate(ctx context.Context, opts CalibrationOptions) (CalibrationReport,
 	report := CalibrationReport{Version: "vflow-media-sync-report/v1", Status: "planned", SyncMapPath: filepath.ToSlash(opts.OutputPath), SyncMap: m, ExtractPlans: extractPlans, WaveformPlans: waveformPlans}
 	if opts.Commit {
 		report.Status = "written"
-		report.Validation = m.Validate(ValidationOptions{})
+		report.Validation = m.Validate(ValidationOptions{MinConfidence: 0.65})
 		report.Warnings = m.ConfidenceWarnings()
 		if len(report.Validation) == 0 && opts.OutputPath != "" {
 			if err := Write(opts.OutputPath, m); err != nil {
@@ -113,6 +136,30 @@ func Calibrate(ctx context.Context, opts CalibrationOptions) (CalibrationReport,
 		}
 	}
 	return report, nil
+}
+
+func voteCorrelations(results []CorrelationResult) CorrelationResult {
+	if len(results) == 0 {
+		return CorrelationResult{}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].LagSeconds < results[j].LagSeconds
+	})
+	mid := len(results) / 2
+	voted := results[mid]
+	if len(results)%2 == 0 {
+		voted.LagSeconds = (results[mid-1].LagSeconds + results[mid].LagSeconds) / 2
+		voted.LagSamples = int(math.Round(voted.LagSeconds * EnvelopeRate))
+	}
+	confidence := 0.0
+	peak := 0.0
+	for _, result := range results {
+		confidence += result.Confidence
+		peak += result.Peak
+	}
+	voted.Confidence = confidence / float64(len(results))
+	voted.Peak = peak / float64(len(results))
+	return voted
 }
 
 func ApplyTranscriptOffset(m SyncMap, transcriptSeconds, referenceSeconds float64, anchorID, method, text string, confidence float64) SyncMap {

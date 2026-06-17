@@ -126,6 +126,33 @@ func TestRenderTranscriptCutDryRunUsesEditDecision(t *testing.T) {
 	}
 }
 
+func TestRenderTranscriptCutAcceptsAtFileInput(t *testing.T) {
+	dir := t.TempDir()
+	editPath := filepath.Join(dir, "social-cut.json")
+	edit := `{
+  "version": "vflow-transcript-cut/v1",
+  "segments": [
+    {"id":"hook","source":"media/source-a.mp4","start_seconds":120,"end_seconds":128,"text":"10-year video"}
+  ]
+}`
+	if err := os.WriteFile(editPath, []byte(edit), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runCLI(t,
+		"render", "transcript-cut",
+		"--project", dir,
+		"--input", "@"+editPath,
+		"--output", "renders/social-30s.mp4",
+		"--format", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(out, `"status": "planned"`) || !strings.Contains(out, `"duration_seconds": 8`) {
+		t.Fatalf("unexpected transcript-cut output:\n%s", out)
+	}
+}
+
 func TestRenderPreviewCommitWritesJobRecord(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "media"), 0o755); err != nil {

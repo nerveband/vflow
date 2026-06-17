@@ -14,12 +14,16 @@ import (
 )
 
 type TranscriptRange struct {
-	ID       string  `json:"id"`
-	SourceID string  `json:"source_id"`
-	Start    float64 `json:"transcript_start_seconds"`
-	End      float64 `json:"transcript_end_seconds"`
-	Text     string  `json:"text,omitempty"`
-	Output   string  `json:"output,omitempty"`
+	ID         string  `json:"id"`
+	SourceID   string  `json:"source_id"`
+	Start      float64 `json:"transcript_start_seconds"`
+	End        float64 `json:"transcript_end_seconds"`
+	StartAlias float64 `json:"start,omitempty"`
+	EndAlias   float64 `json:"end,omitempty"`
+	Text       string  `json:"text,omitempty"`
+	SpeakerID  string  `json:"speaker_id,omitempty"`
+	Reason     string  `json:"reason,omitempty"`
+	Output     string  `json:"output,omitempty"`
 }
 
 type SourceRange struct {
@@ -124,6 +128,7 @@ func ReadTranscriptRanges(path string) ([]TranscriptRange, error) {
 		if err := jsonUnmarshal(raw, &ranges); err != nil {
 			return nil, err
 		}
+		normalizeTranscriptRanges(ranges)
 		return ranges, nil
 	}
 	var wrapper struct {
@@ -132,7 +137,19 @@ func ReadTranscriptRanges(path string) ([]TranscriptRange, error) {
 	if err := jsonUnmarshal(raw, &wrapper); err != nil {
 		return nil, err
 	}
+	normalizeTranscriptRanges(wrapper.Ranges)
 	return wrapper.Ranges, nil
+}
+
+func normalizeTranscriptRanges(ranges []TranscriptRange) {
+	for i := range ranges {
+		if ranges[i].Start == 0 && ranges[i].StartAlias != 0 {
+			ranges[i].Start = ranges[i].StartAlias
+		}
+		if ranges[i].End == 0 && ranges[i].EndAlias != 0 {
+			ranges[i].End = ranges[i].EndAlias
+		}
+	}
 }
 
 var jsonUnmarshal = func(data []byte, v any) error {

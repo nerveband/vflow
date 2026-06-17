@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow b-roll plan",
+  "type": "object",
+  "required": ["version", "overlays"],
+  "properties": {
+    "version": {"const": "vflow-broll-plan/v1"},
+    "overlays": {"type": "array"}
+  },
+  "additionalProperties": true
+}

@@ -59,6 +59,54 @@ func TestQAAnalyzeDryRunDefaultsToFilesUpload(t *testing.T) {
 	if !strings.Contains(out, `"version": "vflow-gemini-video-qa/v1"`) {
 		t.Fatalf("expected QA report version: %s", out)
 	}
+	if !strings.Contains(out, `"timeout": "20m"`) {
+		t.Fatalf("expected provider-aware timeout: %s", out)
+	}
+}
+
+func TestQAAnalyzeEditorialModeUsesPromptAndTranscriptContext(t *testing.T) {
+	project := t.TempDir()
+	promptPath := filepath.Join(project, "qa", "editorial.md")
+	transcriptPath := filepath.Join(project, "transcript", "notes.txt")
+	if err := os.MkdirAll(filepath.Dir(promptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(transcriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(promptPath, []byte("Review pacing and donor-story clarity."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(transcriptPath, []byte("Speaker 1: This program changed our city."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCLI(t,
+		"qa", "analyze",
+		"--project", project,
+		"--render", "../../fixtures/media/tiny/source.mp4",
+		"--provider", "gemini",
+		"--model", "gemini-3.5-flash",
+		"--mode", "editorial",
+		"--prompt", promptPath,
+		"--transcript", transcriptPath,
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+	}
+	for _, want := range []string{
+		`"mode": "editorial"`,
+		`"prompt_path":`,
+		`"transcript_path":`,
+		`Review pacing and donor-story clarity.`,
+		`Speaker 1: This program changed our city.`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %s in:\n%s", want, out)
+		}
+	}
 }
 
 func TestWriteGeminiQAReportWrapsProviderResponse(t *testing.T) {

@@ -72,13 +72,13 @@ func TestSessionLifecycleLocalhostStatusAndShutdown(t *testing.T) {
 	}
 }
 
-func TestSessionRejectsNonLocalhostAndAbsoluteSource(t *testing.T) {
+func TestSessionRejectsNonLocalhostAndMissingSource(t *testing.T) {
 	dir := testProject(t)
 	if _, _, verr := Start(context.Background(), Options{ProjectPath: dir, Listen: "0.0.0.0:0"}); verr == nil || verr.Code != "CALIBRATE_LISTEN_NOT_LOCALHOST" {
 		t.Fatalf("expected localhost validation error, got %v", verr)
 	}
-	if _, _, verr := Start(context.Background(), Options{ProjectPath: dir, Listen: "127.0.0.1:0", Source: filepath.Join(dir, "media", "source.mp4")}); verr == nil || verr.Code != "CALIBRATE_SOURCE_OUTSIDE_PROJECT" {
-		t.Fatalf("expected source validation error, got %v", verr)
+	if _, _, verr := Start(context.Background(), Options{ProjectPath: dir, Listen: "127.0.0.1:0", Source: filepath.Join(t.TempDir(), "missing-proxy.mp4")}); verr == nil || verr.Code != "CALIBRATE_SOURCE_READ_FAILED" {
+		t.Fatalf("expected missing source validation error, got %v", verr)
 	}
 }
 

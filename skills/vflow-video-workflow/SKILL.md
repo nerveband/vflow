@@ -30,16 +30,28 @@ description: Run a vflow local-first video workflow from project setup through N
    `vflow framing compile --project <project> --commit --format json`.
    `vflow timeline compile --project <project> --commit --format json`.
 
-8. Render a preview only from copied/local project media:
+8. For finishing work, ask vflow for a contract and adapter recommendation before running external tools:
+   `vflow suggest captions --project <project> --format json --format-error json`.
+   `vflow suggest audio --project <project> --format json --format-error json`.
+   `vflow suggest supers --project <project> --format json --format-error json`.
+   `vflow suggest motion --project <project> --format json --format-error json`.
+   The agent runs the recommended external tool. vflow owns the spec, recommendation, and verification, not rendering, compositing, or mixing.
+
+9. Verify finishing outputs against canonical artifacts and route failures to review:
+   `vflow verify captions --project <project> --spec decisions/caption-cues.json --output artifacts/captions.srt --format json --format-error json`.
+   `vflow verify audio --project <project> --spec decisions/audio-intent.json --output reports/audio-report.json --format json --format-error json`.
+   Add `--commit` only when review-queue writes are intended.
+
+10. Render a preview only from copied/local project media:
    `vflow render preview --project <project> --commit --format json`.
 
-9. Run QA/color provider calls only with runtime secrets:
+11. Run QA/color provider calls only with runtime secrets:
    `vflow qa analyze --project <project> --provider gemini --live --commit --format json`.
 
-10. Export to NLE with sidecar:
+12. Export to NLE with sidecar:
     `vflow nle export --project <project> --target fcpxml --commit --format json`.
 
-Canonical artifacts live in JSON. NLE files, Gemini reports, ffmpeg previews, and color notes are adapters or reports, not the source of truth.
+Canonical artifacts live in JSON. `brand.json`, finishing specs, NLE files, Gemini reports, ffmpeg previews, and color notes are adapters, contracts, or reports, not the source of truth.
 
 Useful aliases:
 
@@ -50,4 +62,4 @@ Useful aliases:
 - `render qa-render` maps to render verification.
 - `nle to-nle`, `nle from-nle`, and `nle compare-nle` map to NLE export/import/diff.
 
-Do not use vflow to invent crop boxes, store secrets, bypass `--commit`, or treat NLE project files as canonical state.
+Do not use vflow to invent crop boxes, store secrets, bypass `--commit`, render captions, composite supers/cards, mix audio, create motion graphics, or treat NLE project files as canonical state.

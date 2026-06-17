@@ -39,6 +39,8 @@ type LiveTranscribeOptions struct {
 	Model         string
 	Rate          string
 	SourceMediaID string
+	Diarize       bool
+	Keyterms      []string
 	PollInterval  time.Duration
 }
 
@@ -96,10 +98,20 @@ func TranscribeProvider(ctx context.Context, provider string, opts LiveTranscrib
 
 func transcribeElevenLabs(ctx context.Context, opts LiveTranscribeOptions) (ProviderTranscription, error) {
 	model := firstString(opts.Model, DefaultElevenLabsModel)
-	raw, err := postMultipart(ctx, endpointFromEnv("VFLOW_ELEVENLABS_STT_URL", elevenLabsSpeechToTextURL), "xi-api-key", opts.APIKey, "file", opts.AudioPath, map[string]string{
-		"model_id":               model,
-		"timestamps_granularity": "word",
-	})
+	fields := map[string][]string{
+		"model_id":               {model},
+		"timestamps_granularity": {"word"},
+	}
+	if opts.Diarize {
+		fields["diarize"] = []string{"true"}
+	}
+	for _, keyterm := range opts.Keyterms {
+		keyterm = strings.TrimSpace(keyterm)
+		if keyterm != "" {
+			fields["keyterms"] = append(fields["keyterms"], keyterm)
+		}
+	}
+	raw, err := postMultipartMulti(ctx, endpointFromEnv("VFLOW_ELEVENLABS_STT_URL", elevenLabsSpeechToTextURL), "xi-api-key", opts.APIKey, "file", opts.AudioPath, fields)
 	if err != nil {
 		return ProviderTranscription{}, err
 	}
@@ -406,6 +418,14 @@ func transcribeSoniox(ctx context.Context, opts LiveTranscribeOptions) (Provider
 }
 
 func postMultipart(ctx context.Context, endpoint, keyHeader, keyValue, fileField, filePath string, fields map[string]string) (json.RawMessage, error) {
+	multi := map[string][]string{}
+	for key, value := range fields {
+		multi[key] = []string{value}
+	}
+	return postMultipartMulti(ctx, endpoint, keyHeader, keyValue, fileField, filePath, multi)
+}
+
+func postMultipartMulti(ctx context.Context, endpoint, keyHeader, keyValue, fileField, filePath string, fields map[string][]string) (json.RawMessage, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -420,9 +440,11 @@ func postMultipart(ctx context.Context, endpoint, keyHeader, keyValue, fileField
 	if _, err := io.Copy(part, file); err != nil {
 		return nil, err
 	}
-	for key, value := range fields {
-		if err := writer.WriteField(key, value); err != nil {
-			return nil, err
+	for key, values := range fields {
+		for _, value := range values {
+			if err := writer.WriteField(key, value); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err := writer.Close(); err != nil {

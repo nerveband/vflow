@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow supers and cards",
+  "type": "object",
+  "required": ["version", "brand_ref", "items"],
+  "properties": {
+    "version": {"const": "vflow-super-cards/v1"},
+    "brand_ref": {"type": "string"},
+    "speaker_map_ref": {"type": "string"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "layout_id", "text", "start_frame", "end_frame"],
+        "properties": {
+          "id": {"type": "string"},
+          "layout_id": {"type": "string"},
+          "text": {"type": "string"},
+          "speaker_label": {"type": "string"},
+          "start_frame": {"type": "integer", "minimum": 0},
+          "end_frame": {"type": "integer", "minimum": 0},
+          "safe_margin_token": {"type": "string"}
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

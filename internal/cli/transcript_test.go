@@ -117,6 +117,71 @@ func TestTranscriptCreateLiveDeepgramWritesWordsAndReport(t *testing.T) {
 	}
 }
 
+func TestTranscriptCreateDryRunResolvesRateAndEditorialOptions(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "media", "session-01-9mm.mp4")
+	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("fake-media"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	review := `{
+  "version": "vflow-source-media-review/v1",
+  "sources": [{
+    "version": "vflow-source-media-review/v1",
+    "source": "` + filepath.ToSlash(source) + `",
+    "ingest_mode": "reference",
+    "width": 3840,
+    "height": 2160,
+    "duration_seconds": 1200,
+    "frame_rate": "24000/1001",
+    "timebase": "1/24000",
+    "codec": "h264",
+    "audio_streams": [{"index": 1, "codec": "aac"}],
+    "variable_frame_rate_status": "likely_cfr",
+    "representative_frame_plan": ["first_frame"]
+  }]
+}`
+	if err := os.WriteFile(filepath.Join(dir, "source-media-review.json"), []byte(review), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	keytermsPath := filepath.Join(dir, "transcript", "keyterms.txt")
+	if err := os.MkdirAll(filepath.Dir(keytermsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keytermsPath, []byte("CAIR Georgia\nBartow County\n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCLI(t,
+		"transcript", "create",
+		"--project", dir,
+		"--provider", "elevenlabs",
+		"--source", source,
+		"--diarize",
+		"--keyterms", keytermsPath,
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		`"status": "ready"`,
+		`"rate": "24000/1001"`,
+		`"diarize": true`,
+		`"timeout": "20m"`,
+		`"keyterms": [`,
+		`"CAIR Georgia"`,
+		`"Bartow County"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %s in:\n%s", want, out)
+		}
+	}
+}
+
 func TestTranscriptBakeoffLiveSkipsMissingOptionalKeysAndWritesReport(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "media", "source.mp4")

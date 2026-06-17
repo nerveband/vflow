@@ -40,6 +40,82 @@ func TestSchemaValidateReportsCoverage(t *testing.T) {
 	if !strings.Contains(out, "audit-report.schema.json") {
 		t.Fatalf("schema output missing audit report artifact schema:\n%s", out)
 	}
+	artifactSchemas := data["artifact_schemas"].([]any)
+	foundTranscriptCut := false
+	for _, got := range artifactSchemas {
+		if got == "transcript-cut.schema.json" {
+			foundTranscriptCut = true
+			break
+		}
+	}
+	if !foundTranscriptCut {
+		t.Fatalf("artifact_schemas missing transcript-cut.schema.json: %#v", artifactSchemas)
+	}
+}
+
+func TestSchemaCommandPublishesWriteInputContract(t *testing.T) {
+	out, errOut, code := runCLI(t, "schema", "command", "cut create", "--format", "json")
+	if code != 0 {
+		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+	}
+	for _, want := range []string{
+		`"input_schema"`,
+		`"title": "cut create ranges input"`,
+		`"required": [`,
+		`"ranges"`,
+		`"source_id"`,
+		`"start"`,
+		`"end"`,
+		`"produces": "transcript-cut.schema.json"`,
+		`"example"`,
+		`"speaker_id": "s1"`,
+		`"validation_hint": "Run vflow cut create --ranges @file.json --dry-run --format json before --commit"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("schema command output missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestSchemaAllMutatingCommandsPublishInputContracts(t *testing.T) {
+	out, errOut, code := runCLI(t, "schema", "--format", "json")
+	if code != 0 {
+		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, out)
+	}
+	data := got["data"].(map[string]any)
+	commands := data["commands"].([]any)
+	missing := []string{}
+	for _, item := range commands {
+		cmd := item.(map[string]any)
+		if cmd["requires_commit"] != true {
+			continue
+		}
+		if cmd["input_schema"] == nil || cmd["example"] == nil || cmd["validation_hint"] == nil {
+			missing = append(missing, cmd["name"].(string))
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("mutating commands missing input contracts: %v", missing)
+	}
+}
+
+func TestSchemaFallbackInputContractOmitsNullRequired(t *testing.T) {
+	out, errOut, code := runCLI(t, "schema", "command", "transcript stt", "--format", "json")
+	if code != 0 {
+		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+	}
+	if strings.Contains(out, `"required": null`) {
+		t.Fatalf("fallback schema should omit null required:\n%s", out)
+	}
+	for _, want := range []string{`"input_schema"`, `"title": "transcript stt options"`, `"example"`, `"validation_hint"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("fallback schema missing %s in:\n%s", want, out)
+		}
+	}
 }
 
 func TestAgentContextMentionsLocalIndexArtifacts(t *testing.T) {

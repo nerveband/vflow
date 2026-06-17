@@ -13,6 +13,8 @@ Use `vflow` when an agent needs a reliable editing control plane instead of gues
 - Import, create, search, align, and sync transcripts while keeping frame numbers canonical.
 - Plan cleanup decisions, transcript cuts, timeline compiles, and preview renders with dry-run JSON before writing anything.
 - Calibrate human-approved crop/zoom/reframe presets through a local browser UI, then compile framing lanes from preset IDs rather than invented crop boxes.
+- Suggest finishing workflows for captions, audio, supers/cards, motion, SFX, and b-roll without becoming the renderer, compositor, or mixer.
+- Verify external finishing outputs against canonical contracts, `brand.json`, timing anchors, and approved preset/style tokens, then route failures to `review/review-queue.json`.
 - Render and verify previews with deterministic `ffmpeg` commands.
 - Run live STT or Gemini QA only when the caller explicitly opts into provider quota.
 - Export to NLE interchange formats and classify edited roundtrips without treating NLE files as source of truth.
@@ -25,6 +27,7 @@ The agent pattern is:
 3. Keep mutating commands dry-run until the plan is acceptable.
 4. Add `--commit` only when writes are intended.
 5. Use canonical artifact paths and preset IDs in later commands.
+6. For finishing work, run `vflow suggest <task>`, execute the recommended external tool yourself, then run `vflow verify <task>`.
 
 ## What You Can Rely On
 
@@ -37,6 +40,7 @@ The agent pattern is:
 - Live provider calls require `--live`; writing or costly live calls require `--commit`.
 - Frame numbers are canonical. Seconds are readable derivatives.
 - Framing compilers choose approved preset IDs; they do not invent crop rectangles.
+- Finishing commands are control-plane commands. `suggest` recommends external tools and `verify` checks their outputs; neither command renders captions, composites graphics, mixes audio, or creates b-roll.
 - NLE files are import/export adapters. Roundtrip changes are safe-merged, routed to review, or blocked.
 - Secrets are read from runtime environment variables or external secret tools and are not written to repo artifacts.
 - Local managed GUI sessions bind only to localhost and expose programmatic health/status/shutdown endpoints.
@@ -46,6 +50,7 @@ The agent pattern is:
 Do not use `vflow` as:
 
 - A general-purpose video editor or replacement for Resolve, Final Cut Pro, Premiere, Shotcut, or Kdenlive.
+- A caption renderer, graphics compositor, motion renderer, audio mixer, SFX engine, or b-roll finder.
 - A tool for generating unapproved crop boxes from an LLM suggestion.
 - A way to mutate private media, provider outputs, or NLE project files without `--commit` and artifact review.
 - A cloud job runner. The CLI is local-first; remote orchestration should wrap its JSON contracts.
@@ -79,6 +84,8 @@ Current alpha capabilities:
 - Command/schema introspection through `schema`, `agent-context`, `skill-path`, `doctor`, and `audit cli`.
 - Dry-run by default for mutating work, with `--commit` required for writes and `--live` required for provider calls.
 - Local project/media/transcript/cleanup/framing/timeline/render/color/NLE workflows.
+- Finishing adapter registry in `doctor`, plus `suggest` and `verify` commands for captions, audio, supers/cards, motion, SFX, and b-roll.
+- `brand.json` profile support for colors, fonts, logo variants, caption styles, layout IDs, loudness targets, safe margins, and consistency tokens.
 - Managed localhost calibration UI for human-approved crop/zoom/reframe presets, with API endpoints for agent polling, artifact writes, and shutdown.
 - ffprobe and ffmpeg adapters for media inspection, samples, proxy/range extraction, preview rendering, verification, transcript-cut rendering, and LUT application.
 - Live STT adapters for OpenAI, ElevenLabs, Deepgram, AssemblyAI, Gladia, and Soniox.
@@ -86,6 +93,7 @@ Current alpha capabilities:
 - Color review and LUT workflows with Gemini enrichment when credentials are present.
 - NLE export/import/diff/apply/accept support for Resolve-style FCPXML, FCPXML, EDL, OTIO, MLT, and Premiere XMEML where practical.
 - Versioned artifact schemas for command output, project contracts, transcripts, timelines, QA reports, provider bakeoffs, NLE diffs/sidecars, render reports, and audit reports.
+- Versioned finishing schemas for `brand.json`, caption cues, audio intent, supers/cards, motion ramps, SFX cues, and b-roll plans.
 
 See [reports/vflow-completion-audit.md](reports/vflow-completion-audit.md) for current proof and known gaps. The main remaining compatibility gap is exhaustive proof against real exported timelines from every target editor.
 
@@ -135,6 +143,7 @@ The same commands are the baseline proof set for changes to the CLI.
 - Provider secrets are read from runtime environment variables or external secret tooling, not from project files.
 - `work/`, `tmp/`, `bin/`, `dist/`, `.env`, and private copied media are ignored and should not be published.
 - NLE files are adapters. Canonical project state remains in JSON artifacts owned by `vflow`.
+- Finishing tools are adapters. External tools may produce media, sidecars, or reports, but vflow owns the spec, recommendation, and verification result.
 
 Use JSON in agent workflows:
 
@@ -152,6 +161,7 @@ A typical project folder contains:
 ```text
 project.json
 source-media-review.json
+brand.json
 media/
 transcript/
 calibration/
@@ -170,6 +180,7 @@ Canonical artifacts include:
 
 - `project.json`
 - `source-media-review.json`
+- `brand.json`
 - `transcript/words.json`
 - `decisions/content-edl.json`
 - `decisions/time-map.json`
@@ -200,6 +211,8 @@ vflow schema --validate
 vflow agent-context
 vflow skill-path
 vflow doctor
+vflow suggest captions
+vflow verify captions
 vflow audit cli
 vflow feedback
 ```
@@ -243,6 +256,90 @@ vflow render preview
 vflow render transcript-cut
 vflow render verify
 vflow render verify-transcript
+```
+
+Finishing control plane:
+
+```bash
+vflow suggest captions --project ./my-video --format json --format-error json
+vflow suggest audio --project ./my-video --format json --format-error json
+vflow suggest supers --project ./my-video --format json --format-error json
+vflow suggest motion --project ./my-video --format json --format-error json
+
+# The agent runs the recommended external tool, then returns the contract/report to vflow.
+vflow verify captions --project ./my-video --spec decisions/caption-cues.json --output artifacts/captions.srt --format json --format-error json
+vflow verify audio --project ./my-video --spec decisions/audio-intent.json --output reports/audio-report.json --format json --format-error json
+vflow verify supers --project ./my-video --spec decisions/super-cards.json --commit --format json --format-error json
+vflow verify motion --project ./my-video --spec decisions/motion-ramp.json --output reports/motion-diff.json --commit --format json --format-error json
+```
+
+`suggest` returns the contract schema, a ranked adapter recommendation, a runnable invocation template, alternatives, detected capabilities, and missing-tool hints. `verify` checks conformance and only writes review-queue failures when `--commit` is present.
+
+Finishing contracts are intentionally tool-agnostic:
+
+- `brand.json`: `vflow-brand/v1` tokens for colors, fonts, logo variants, caption styles, lower-third/card layout IDs, loudness targets, safe margins, and consistency tokens.
+- `decisions/caption-cues.json`: `vflow-caption-cues/v1` cue timing anchored to `transcript/words.json`, style ID, and filler-clean intent.
+- `decisions/audio-intent.json`: `vflow-audio-intent/v1` bed reference, duck target, loudness target, and speech-segment anchors.
+- `decisions/super-cards.json`: `vflow-super-cards/v1` layout decisions tied to `brand.json` and the speaker map.
+- `decisions/motion-ramp.json`: `vflow-motion-ramp/v1` ramp intent over approved framing preset IDs.
+- `decisions/sfx-cues.json` and `decisions/broll-plan.json`: scaffold contracts for cue/overlay planning and future adapters.
+
+Agent write contracts are inspectable before authoring payloads:
+
+```bash
+vflow schema command "cut create" --format json
+vflow schema command "render transcript-cut" --format json
+vflow schema command "media sync" --format json
+```
+
+For large external camera files, keep source media on the source drive and record intent in `source-media-review.json`:
+
+```bash
+vflow media ingest --source "/Volumes/Shams Drive/session-01-9mm.mp4" --reference --commit --format json
+vflow media ingest --source "/Volumes/Shams Drive/session-01-9mm.mp4" --link --commit --format json
+```
+
+JSON payload flags accept `@file.json` so agents can fill schemas directly:
+
+```bash
+vflow cut create --ranges @decisions/ranges.json --sync-map calibration/media-sync-map.json --format json
+vflow render transcript-cut --input @decisions/transcript-cut.json --output renders/social.mp4 --format json
+```
+
+Live transcript creation can request diarization and keyterm prompting, and defaults the frame rate from `source-media-review.json` when `--rate` is omitted:
+
+```bash
+vflow transcript create \
+  --provider elevenlabs \
+  --source "/Volumes/Shams Drive/session-01-9mm.mp4" \
+  --diarize \
+  --keyterms transcript/keyterms.txt \
+  --live \
+  --commit \
+  --format json
+```
+
+Multicam sync can use transcript word anchors instead of low-confidence waveform correlation:
+
+```bash
+vflow media sync \
+  --method transcript \
+  --reference-source-id atem \
+  --reference-words transcript/atem.words.json \
+  --source-words 9mm=transcript/9mm.words.json,12mm=transcript/12mm.words.json \
+  --commit \
+  --format json
+```
+
+Waveform sync can sample multiple windows and median-vote the offset, which is safer for long event footage where one quiet or noisy section can mislead correlation:
+
+```bash
+vflow media sync \
+  --reference-source-id atem \
+  --sources atem=/Volumes/Shams\ Drive/proxies/atem.mp4,9mm=/Volumes/Shams\ Drive/proxies/9mm.mp4 \
+  --sync-windows 3 \
+  --commit \
+  --format json
 ```
 
 QA, color, and NLE:
@@ -389,9 +486,11 @@ go run ./cmd/vflow qa analyze \
   --provider gemini \
   --model gemini-3.5-flash \
   --upload files \
+  --mode editorial \
+  --prompt qa/editorial-prompt.md \
+  --transcript transcript/words.json \
   --live \
   --commit \
-  --timeout 5m \
   --format json \
   --format-error json
 ```

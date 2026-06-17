@@ -97,6 +97,164 @@ func TestMediaProbeFFProbeFailureUsesStructuredJSON(t *testing.T) {
 	}
 }
 
+func TestMediaIngestReferenceWritesReviewWithoutCopy(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "external-source.mp4")
+	if err := os.WriteFile(source, []byte("external media placeholder"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runCLI(t,
+		"media", "ingest",
+		"--project", dir,
+		"--source", source,
+		"--reference",
+		"--ffprobe-json", "../../fixtures/media/tiny/ffprobe.json",
+		"--commit",
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "media", filepath.Base(source))); !os.IsNotExist(err) {
+		t.Fatalf("reference ingest should not copy media, stat err=%v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "source-media-review.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"status": "referenced"`, `"ingest_mode": "reference"`, filepath.ToSlash(source)} {
+		if !strings.Contains(out+string(raw), want) {
+			t.Fatalf("reference ingest missing %q\nstdout=%s\nreview=%s", want, out, raw)
+		}
+	}
+}
+
+func TestMediaIngestLinkCreatesProjectLink(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "external-source.mp4")
+	if err := os.WriteFile(source, []byte("external media placeholder"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runCLI(t,
+		"media", "ingest",
+		"--project", dir,
+		"--source", source,
+		"--link",
+		"--ffprobe-json", "../../fixtures/media/tiny/ffprobe.json",
+		"--commit",
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	dest := filepath.Join(dir, "media", filepath.Base(source))
+	target, err := os.Readlink(dest)
+	if err != nil {
+		t.Fatalf("expected project media symlink at %s: %v", dest, err)
+	}
+	if target != source {
+		t.Fatalf("link target = %q, want %q", target, source)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "source-media-review.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out+string(raw), `"ingest_mode": "link"`) || !strings.Contains(out, `"status": "linked"`) {
+		t.Fatalf("link ingest missing mode/status\nstdout=%s\nreview=%s", out, raw)
+	}
+}
+
+func TestMediaSyncTranscriptMethodWritesSyncMap(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "transcript"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	referenceWords := `{"version":"vflow-words/v1","source_media_id":"atem","rate":"30/1","words":[
+{"id":"r1","text":"cair","start_frame":300,"end_frame":315,"provider":"test"},
+{"id":"r2","text":"georgia","start_frame":330,"end_frame":345,"provider":"test"},
+{"id":"r3","text":"served","start_frame":360,"end_frame":375,"provider":"test"}]}`
+	sourceWords := `{"version":"vflow-words/v1","source_media_id":"9mm","rate":"30/1","words":[
+{"id":"s1","text":"CAIR","start_frame":4890,"end_frame":4905,"provider":"test"},
+{"id":"s2","text":"Georgia","start_frame":4920,"end_frame":4935,"provider":"test"},
+{"id":"s3","text":"served","start_frame":4950,"end_frame":4965,"provider":"test"}]}`
+	refPath := filepath.Join(dir, "transcript", "atem.words.json")
+	srcPath := filepath.Join(dir, "transcript", "9mm.words.json")
+	if err := os.WriteFile(refPath, []byte(referenceWords), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(srcPath, []byte(sourceWords), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCLI(t,
+		"media", "sync",
+		"--project", dir,
+		"--method", "transcript",
+		"--reference-source-id", "atem",
+		"--reference-words", refPath,
+		"--source-words", "9mm="+srcPath,
+		"--output", "calibration/media-sync-map.json",
+		"--commit",
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		`"method": "transcript_anchor"`,
+		`"offset_from_reference_seconds": 153`,
+		`"match_count": 3`,
+		`"max_residual_seconds": 0`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %s in:\n%s", want, out)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "calibration", "media-sync-map.json")); err != nil {
+		t.Fatalf("expected sync map: %v", err)
+	}
+}
+
+func TestMediaSyncTranscriptMethodRejectsLowConfidenceCommit(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "transcript"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	refPath := filepath.Join(dir, "transcript", "atem.words.json")
+	srcPath := filepath.Join(dir, "transcript", "9mm.words.json")
+	if err := os.WriteFile(refPath, []byte(`{"version":"vflow-words/v1","source_media_id":"atem","rate":"30/1","words":[{"id":"r1","text":"unique","start_frame":0,"end_frame":1,"provider":"test"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(srcPath, []byte(`{"version":"vflow-words/v1","source_media_id":"9mm","rate":"30/1","words":[{"id":"s1","text":"unique","start_frame":300,"end_frame":301,"provider":"test"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, errOut, code := runCLI(t,
+		"media", "sync",
+		"--project", dir,
+		"--method", "transcript",
+		"--reference-source-id", "atem",
+		"--reference-words", refPath,
+		"--source-words", "9mm="+srcPath,
+		"--output", "calibration/media-sync-map.json",
+		"--commit",
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 4 {
+		t.Fatalf("expected validation failure, got %d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(errOut, "confidence") || !strings.Contains(errOut, "below 0.65") {
+		t.Fatalf("expected low-confidence error, got:\n%s", errOut)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "calibration", "media-sync-map.json")); !os.IsNotExist(err) {
+		t.Fatalf("low-confidence commit should not write sync map, stat err=%v", err)
+	}
+}
+
 func TestMediaProxyCommitRunsConfiguredFFmpeg(t *testing.T) {
 	dir := t.TempDir()
 	ffmpeg := fakeCLIFFmpeg(t, dir)
@@ -194,6 +352,26 @@ func TestCutCreateResolvesProjectRelativePaths(t *testing.T) {
 	}
 	if !strings.Contains(out, `"source_timeline_offset": 373`) {
 		t.Fatalf("expected sync-resolved cut: %s", out)
+	}
+}
+
+func TestCutCreateAcceptsAtFileRanges(t *testing.T) {
+	dir := t.TempDir()
+	writeSyncFixture(t, dir)
+
+	out, errOut, code := runCLI(t,
+		"cut", "create",
+		"--project", dir,
+		"--sync-map", "calibration/media-sync-map.json",
+		"--ranges", "@"+filepath.Join(dir, "decisions", "ranges.json"),
+		"--format", "json",
+		"--format-error", "json",
+	)
+	if code != 0 {
+		t.Fatalf("expected success, got %d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"status": "planned"`) || !strings.Contains(out, `"source_timeline_offset": 373`) {
+		t.Fatalf("expected sync-resolved planned cut: %s", out)
 	}
 }
 

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow motion ramp",
+  "type": "object",
+  "required": ["version", "from_preset_id", "to_preset_id", "start_frame", "end_frame", "ease"],
+  "properties": {
+    "version": {"const": "vflow-motion-ramp/v1"},
+    "from_preset_id": {"type": "string"},
+    "to_preset_id": {"type": "string"},
+    "start_frame": {"type": "integer", "minimum": 0},
+    "end_frame": {"type": "integer", "minimum": 0},
+    "ease": {"type": "string"},
+    "frame_diff_confirmed": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}

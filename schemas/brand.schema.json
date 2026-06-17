@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow brand profile",
+  "type": "object",
+  "required": ["version", "colors", "fonts", "caption_styles", "layout_ids", "loudness_targets", "safe_margins", "consistency_tokens"],
+  "properties": {
+    "version": {"const": "vflow-brand/v1"},
+    "colors": {"type": "object", "additionalProperties": {"type": "string"}},
+    "fonts": {"type": "object", "additionalProperties": {"type": "string"}},
+    "logo_variants": {"type": "object"},
+    "caption_styles": {"type": "object"},
+    "lower_thirds": {"type": "object"},
+    "cards": {"type": "object"},
+    "layout_ids": {"type": "array", "items": {"type": "string"}},
+    "loudness_targets": {
+      "type": "object",
+      "properties": {
+        "integrated_lufs": {"type": "number"},
+        "true_peak_db": {"type": "number"}
+      }
+    },
+    "safe_margins": {"type": "object", "additionalProperties": {"type": "number"}},
+    "consistency_tokens": {"type": "object", "additionalProperties": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow sfx cues",
+  "type": "object",
+  "required": ["version", "cues"],
+  "properties": {
+    "version": {"const": "vflow-sfx-cues/v1"},
+    "cues": {"type": "array"}
+  },
+  "additionalProperties": true
+}

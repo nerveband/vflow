@@ -414,7 +414,10 @@ func resolveSource(root, source string) (string, *verrors.Error) {
 	}
 	clean := filepath.Clean(source)
 	if filepath.IsAbs(clean) {
-		return "", verrors.Validation("CALIBRATE_SOURCE_OUTSIDE_PROJECT", "--source must be project-relative", "Use a path under the project root, such as media/source.mp4", false)
+		if _, err := os.Stat(clean); err != nil {
+			return "", verrors.External("CALIBRATE_SOURCE_READ_FAILED", err.Error(), "Check --source exists", false)
+		}
+		return clean, nil
 	}
 	full, err := filepath.Abs(filepath.Join(root, clean))
 	if err != nil {
@@ -422,7 +425,7 @@ func resolveSource(root, source string) (string, *verrors.Error) {
 	}
 	rel, err := filepath.Rel(root, full)
 	if err != nil || strings.HasPrefix(rel, "..") || rel == "."+string(filepath.Separator) {
-		return "", verrors.Validation("CALIBRATE_SOURCE_OUTSIDE_PROJECT", "--source must stay under the project root", "Copy media into project media/ first", false)
+		return "", verrors.Validation("CALIBRATE_SOURCE_OUTSIDE_PROJECT", "--source must stay under the project root unless absolute", "Use an absolute proxy/external path or a project-relative media path", false)
 	}
 	if _, err := os.Stat(full); err != nil {
 		return "", verrors.External("CALIBRATE_SOURCE_READ_FAILED", err.Error(), "Check --source exists under the project", false)

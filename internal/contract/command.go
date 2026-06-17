@@ -26,4 +26,8 @@ type Command struct {
 	Inputs         []Input  `json:"inputs,omitempty"`
 	Outputs        []Output `json:"outputs,omitempty"`
 	Examples       []string `json:"examples,omitempty"`
+	InputSchema    any      `json:"input_schema,omitempty"`
+	Produces       string   `json:"produces,omitempty"`
+	Example        any      `json:"example,omitempty"`
+	ValidationHint string   `json:"validation_hint,omitempty"`
 }

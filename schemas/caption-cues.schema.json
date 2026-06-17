@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow caption cues",
+  "type": "object",
+  "required": ["version", "words_ref", "style_id", "filler_clean", "cues"],
+  "properties": {
+    "version": {"const": "vflow-caption-cues/v1"},
+    "words_ref": {"type": "string"},
+    "style_id": {"type": "string"},
+    "filler_clean": {"type": "boolean"},
+    "max_drift_frames": {"type": "integer", "minimum": 0},
+    "cues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "word_ids", "start_frame", "end_frame"],
+        "properties": {
+          "id": {"type": "string"},
+          "text": {"type": "string"},
+          "word_ids": {"type": "array", "items": {"type": "string"}},
+          "start_frame": {"type": "integer", "minimum": 0},
+          "end_frame": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

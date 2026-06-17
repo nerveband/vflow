@@ -18,6 +18,7 @@ type AudioStream struct {
 type SourceReview struct {
 	Version                 string        `json:"version"`
 	Source                  string        `json:"source"`
+	IngestMode              string        `json:"ingest_mode,omitempty"`
 	Width                   int           `json:"width"`
 	Height                  int           `json:"height"`
 	DurationSeconds         float64       `json:"duration_seconds"`

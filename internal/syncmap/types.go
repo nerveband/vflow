@@ -30,13 +30,14 @@ type SyncMap struct {
 }
 
 type SourceSync struct {
-	ID                         string   `json:"id"`
-	Path                       string   `json:"path"`
-	AudioStreamIndex           int      `json:"audio_stream_index,omitempty"`
-	OffsetFromReferenceSeconds float64  `json:"offset_from_reference_seconds"`
-	Confidence                 float64  `json:"confidence"`
-	DriftPPM                   float64  `json:"drift_ppm,omitempty"`
-	Warnings                   []string `json:"warnings,omitempty"`
+	ID                         string               `json:"id"`
+	Path                       string               `json:"path"`
+	AudioStreamIndex           int                  `json:"audio_stream_index,omitempty"`
+	OffsetFromReferenceSeconds float64              `json:"offset_from_reference_seconds"`
+	Confidence                 float64              `json:"confidence"`
+	DriftPPM                   float64              `json:"drift_ppm,omitempty"`
+	TranscriptAlignment        *TranscriptAlignment `json:"transcript_alignment,omitempty"`
+	Warnings                   []string             `json:"warnings,omitempty"`
 }
 
 type Anchor struct {
@@ -50,6 +51,7 @@ type Anchor struct {
 
 type ValidationOptions struct {
 	AllowLowConfidence bool
+	MinConfidence      float64
 }
 
 func New(projectID, referenceSourceID string, sources []SourceSync) SyncMap {
@@ -108,6 +110,10 @@ func (m SyncMap) ResolveRange(sourceID string, transcriptStart, transcriptEnd fl
 
 func (m SyncMap) Validate(opts ValidationOptions) []string {
 	var errs []string
+	minConfidence := opts.MinConfidence
+	if minConfidence <= 0 {
+		minConfidence = 0.30
+	}
 	if m.Version != Version {
 		errs = append(errs, "version must be "+Version)
 	}
@@ -126,8 +132,8 @@ func (m SyncMap) Validate(opts ValidationOptions) []string {
 		if source.Confidence < 0 || source.Confidence > 1 || math.IsNaN(source.Confidence) {
 			errs = append(errs, prefix+".confidence must be between 0 and 1")
 		}
-		if source.Confidence < 0.3 && !opts.AllowLowConfidence {
-			errs = append(errs, prefix+".confidence below 0.30 requires allow-low-confidence")
+		if source.Confidence < minConfidence && !opts.AllowLowConfidence {
+			errs = append(errs, fmt.Sprintf("%s.confidence below %.2f requires allow-low-confidence", prefix, minConfidence))
 		}
 		seen[source.ID] = true
 	}
@@ -147,6 +153,19 @@ func (m SyncMap) ConfidenceWarnings() []string {
 			warnings = append(warnings, fmt.Sprintf("source %s confidence %.2f below 0.65", source.ID, source.Confidence))
 		}
 		warnings = append(warnings, source.Warnings...)
+	}
+	for i, left := range m.Sources {
+		if left.ID == m.ReferenceSourceID {
+			continue
+		}
+		for _, right := range m.Sources[i+1:] {
+			if right.ID == m.ReferenceSourceID {
+				continue
+			}
+			if left.ID != right.ID && math.Abs(left.OffsetFromReferenceSeconds-right.OffsetFromReferenceSeconds) < 0.001 {
+				warnings = append(warnings, fmt.Sprintf("sources %s and %s have identical offset %.3fs; review sync before cutting", left.ID, right.ID, left.OffsetFromReferenceSeconds))
+			}
+		}
 	}
 	return warnings
 }

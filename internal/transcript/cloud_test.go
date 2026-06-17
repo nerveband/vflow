@@ -30,6 +30,13 @@ func TestTranscribeElevenLabsPostsMultipartAndNormalizesWords(t *testing.T) {
 		if got := r.FormValue("timestamps_granularity"); got != "word" {
 			t.Fatalf("timestamps_granularity = %q", got)
 		}
+		if got := r.FormValue("diarize"); got != "true" {
+			t.Fatalf("diarize = %q", got)
+		}
+		keyterms := r.MultipartForm.Value["keyterms"]
+		if len(keyterms) != 2 || keyterms[0] != "CAIR Georgia" || keyterms[1] != "Bartow County" {
+			t.Fatalf("keyterms = %#v", keyterms)
+		}
 		if _, _, err := r.FormFile("file"); err != nil {
 			t.Fatalf("missing multipart file: %v", err)
 		}
@@ -45,6 +52,8 @@ func TestTranscribeElevenLabsPostsMultipartAndNormalizesWords(t *testing.T) {
 		AudioPath:     audioPath,
 		Rate:          "30",
 		SourceMediaID: "cam_a",
+		Diarize:       true,
+		Keyterms:      []string{"CAIR Georgia", "Bartow County"},
 	})
 	if err != nil {
 		t.Fatal(err)

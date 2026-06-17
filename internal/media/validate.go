@@ -27,6 +27,11 @@ func ValidateSourceReview(review SourceReview) error {
 	if strings.TrimSpace(review.Source) == "" {
 		return fmt.Errorf("source path is required")
 	}
+	switch review.IngestMode {
+	case "", "copy", "reference", "link":
+	default:
+		return fmt.Errorf("source ingest_mode is invalid")
+	}
 	if review.Width <= 0 || review.Height <= 0 {
 		return fmt.Errorf("source dimensions must be positive")
 	}

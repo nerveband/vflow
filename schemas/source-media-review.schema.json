@@ -33,6 +33,10 @@
             "type": "string",
             "minLength": 1
           },
+          "ingest_mode": {
+            "type": "string",
+            "enum": ["copy", "reference", "link"]
+          },
           "width": {
             "type": "integer",
             "minimum": 1

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow audio intent",
+  "type": "object",
+  "required": ["version", "bed_ref", "duck_target_db", "loudness_target_lufs", "speech_segments"],
+  "properties": {
+    "version": {"const": "vflow-audio-intent/v1"},
+    "bed_ref": {"type": "string"},
+    "duck_target_db": {"type": "number"},
+    "loudness_target_lufs": {"type": "number"},
+    "speech_segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "start_frame", "end_frame"],
+        "properties": {
+          "id": {"type": "string"},
+          "start_frame": {"type": "integer", "minimum": 0},
+          "end_frame": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -61,6 +61,24 @@ func TestFramingCalibrateCropZoomAliases(t *testing.T) {
 	}
 }
 
+func TestFramingCalibrateAcceptsAbsoluteExternalSource(t *testing.T) {
+	dir := t.TempDir()
+	external := filepath.Join(t.TempDir(), "proxy-source.mp4")
+	if err := os.WriteFile(external, []byte("fake-media"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, errOut, code := runCLI(t, "project", "init", "--path", dir, "--id", "framing_external_source_test", "--commit", "--format", "json"); code != 0 {
+		t.Fatalf("project init failed: %d %s", code, errOut)
+	}
+	out, errOut, code := runCLI(t, "framing", "calibrate", "--project", dir, "--source", external, "--listen", "127.0.0.1:0", "--open=false", "--wait=false", "--session-timeout", "2s", "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("calibrate with external source failed: %d %s", code, errOut)
+	}
+	if !strings.Contains(out, `"command": "framing calibrate"`) || !strings.Contains(out, `"session_id":`) {
+		t.Fatalf("unexpected calibrate output:\n%s", out)
+	}
+}
+
 func TestFramingCompileBuildsLaneAndReviewQueueFromProjectArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	if _, errOut, code := runCLI(t, "project", "init", "--path", dir, "--id", "framing_compile_test", "--commit", "--format", "json"); code != 0 {
