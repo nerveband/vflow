@@ -36,6 +36,8 @@ type Suggestion struct {
 	ContractExample      any       `json:"contract_example"`
 	Recommendation       Adapter   `json:"recommendation"`
 	Invocation           string    `json:"invocation"`
+	MeasurementCommand   string    `json:"measurement_command,omitempty"`
+	MeasurementReport    string    `json:"measurement_report,omitempty"`
 	Alternatives         []Adapter `json:"alternatives"`
 	DetectedCapabilities []Adapter `json:"detected_capabilities"`
 	MissingToolHints     []string  `json:"missing_tool_hints"`
@@ -117,6 +119,8 @@ func Suggest(task, project string) (Suggestion, error) {
 		ContractExample:      contractExample(task),
 		Recommendation:       recommendation,
 		Invocation:           renderInvocation(task, project, recommendation),
+		MeasurementCommand:   measurementCommand(task, project),
+		MeasurementReport:    measurementReport(task),
 		Alternatives:         adapters[1:],
 		DetectedCapabilities: adapters,
 		MissingToolHints:     missing,
@@ -220,6 +224,10 @@ func verifyCaptions(project, specPath, outputPath string) (VerifyResult, error) 
 		}
 	}
 	if outputPath != "" {
+		if strings.TrimSpace(words.Rate) == "" {
+			addFailure(&result, "caption_rate_missing", "transcript/words.json must include rate before verifying timed caption output", 0, 1)
+			return finishResult(result), nil
+		}
 		verifyCaptionOutput(project, outputPath, spec.Cues, maxDrift, words.Rate, &result)
 	}
 	return finishResult(result), nil
@@ -643,6 +651,31 @@ func renderInvocation(task, project string, adapter Adapter) string {
 		return adapter.Invocation + " && vflow verify motion --project " + project + " --spec decisions/motion-ramp.json --output reports/motion-diff.json --format json"
 	default:
 		return adapter.Invocation + " && vflow verify " + task + " --project " + project + " --spec decisions/" + task + ".json --format json"
+	}
+}
+
+func measurementCommand(task, project string) string {
+	if project == "" {
+		project = "."
+	}
+	switch task {
+	case "audio":
+		return "ffmpeg -hide_banner -nostats -i artifacts/final-mix.wav -af loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json -f null - 2> reports/audio-loudnorm.txt && transcribe/render-sync proof writes reports/audio-report.json"
+	case "motion":
+		return "ffmpeg -hide_banner -i renders/output.mp4 -vf \"select='eq(n,START_FRAME)+eq(n,END_FRAME)',scale=64:64,format=gray\" -f framemd5 reports/motion-framemd5.txt && compare hashes into reports/motion-diff.json"
+	default:
+		return ""
+	}
+}
+
+func measurementReport(task string) string {
+	switch task {
+	case "audio":
+		return "reports/audio-report.json with integrated_lufs, true_peak_db, clipping, timing_preserved from tool output"
+	case "motion":
+		return "reports/motion-diff.json with frame_diff_confirmed from frame hashes, not a hand-written flag"
+	default:
+		return ""
 	}
 }
 

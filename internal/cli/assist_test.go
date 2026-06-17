@@ -42,6 +42,24 @@ func TestSuggestCaptionsReturnsRankedRunnableRecommendation(t *testing.T) {
 	}
 }
 
+func TestSuggestAudioAndMotionExposeMeasurementCommands(t *testing.T) {
+	for _, tc := range []struct {
+		task string
+		want string
+	}{
+		{task: "audio", want: "loudnorm"},
+		{task: "motion", want: "framemd5"},
+	} {
+		out, errOut, code := runCLI(t, "suggest", tc.task, "--format", "json", "--format-error", "json")
+		if code != 0 {
+			t.Fatalf("expected success for %s, got %d stderr=%s", tc.task, code, errOut)
+		}
+		if !strings.Contains(out, `"measurement_command"`) || !strings.Contains(out, tc.want) || !strings.Contains(out, `"measurement_report"`) {
+			t.Fatalf("%s suggestion missing measurement metadata %q in:\n%s", tc.task, tc.want, out)
+		}
+	}
+}
+
 func TestVerifyCaptionsRoutesDriftToReviewQueueOnCommit(t *testing.T) {
 	project := t.TempDir()
 	writeAssistFixture(t, project)
@@ -146,6 +164,36 @@ func TestVerifyCaptionsFailsDriftedSRTOutput(t *testing.T) {
 	}
 	if !strings.Contains(out, `"status": "failed"`) || !strings.Contains(out, "caption_output_timing_drift") {
 		t.Fatalf("drifted SRT should fail verification:\n%s", out)
+	}
+}
+
+func TestVerifyCaptionsFailsWhenWordsRateMissingWithOutput(t *testing.T) {
+	project := t.TempDir()
+	writeAssistFixture(t, project)
+	writeTestJSONFile(t, filepath.Join(project, "transcript", "words.json"), map[string]any{
+		"version": "vflow-words/v1", "source_media_id": "src",
+		"words": []map[string]any{{"id": "w1", "text": "hello", "start_frame": 0, "end_frame": 15, "provider": "fixture"}},
+	})
+	specPath := filepath.Join(project, "decisions", "caption-cues.json")
+	outputPath := filepath.Join(project, "artifacts", "captions.srt")
+	writeTestJSONFile(t, specPath, map[string]any{
+		"version":          "vflow-caption-cues/v1",
+		"words_ref":        "transcript/words.json",
+		"style_id":         "caption.default",
+		"filler_clean":     true,
+		"max_drift_frames": 1,
+		"cues": []map[string]any{{
+			"id": "cap_001", "text": "hello", "word_ids": []string{"w1"}, "start_frame": 0, "end_frame": 15,
+		}},
+	})
+	writeTestTextFile(t, outputPath, "1\n00:00:00,000 --> 00:00:00,500\nhello\n")
+
+	out, errOut, code := runCLI(t, "verify", "captions", "--project", project, "--spec", specPath, "--output", outputPath, "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("expected reviewable success, got %d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(out, `"status": "failed"`) || !strings.Contains(out, "caption_rate_missing") {
+		t.Fatalf("missing words rate should fail instead of assuming 30fps:\n%s", out)
 	}
 }
 

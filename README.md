@@ -273,12 +273,12 @@ vflow verify supers --project ./my-video --spec decisions/super-cards.json --com
 vflow verify motion --project ./my-video --spec decisions/motion-ramp.json --output reports/motion-diff.json --commit --format json --format-error json
 ```
 
-`suggest` returns the contract schema, a ranked adapter recommendation, a runnable invocation template, alternatives, detected capabilities, and missing-tool hints. `verify` checks conformance and only writes review-queue failures when `--commit` is present.
+`suggest` returns the contract schema, a ranked adapter recommendation, a runnable invocation template, alternatives, detected capabilities, and missing-tool hints. For report-backed checks such as audio and motion, it also returns a `measurement_command` and `measurement_report` description so the report comes from a concrete tool pass rather than a hand-written claim. `verify` checks conformance and only writes review-queue failures when `--commit` is present.
 
 Finishing contracts are intentionally tool-agnostic:
 
 - `brand.json`: `vflow-brand/v1` tokens for colors, fonts, logo variants, caption styles, lower-third/card layout IDs, loudness targets, safe margins, and consistency tokens.
-- `decisions/caption-cues.json`: `vflow-caption-cues/v1` cue timing anchored to `transcript/words.json`, style ID, and filler-clean intent.
+- `decisions/caption-cues.json`: `vflow-caption-cues/v1` cue timing anchored to `transcript/words.json`, style ID, and filler-clean intent. Timed caption output verification requires `transcript/words.json` to include the canonical `rate`; vflow routes missing rate to review instead of assuming 30fps.
 - `decisions/audio-intent.json`: `vflow-audio-intent/v1` bed reference, duck target, loudness target, and speech-segment anchors.
 - `decisions/super-cards.json`: `vflow-super-cards/v1` layout decisions tied to `brand.json` and the speaker map.
 - `decisions/motion-ramp.json`: `vflow-motion-ramp/v1` ramp intent over approved framing preset IDs.
