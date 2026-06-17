@@ -482,17 +482,6 @@ go run ./cmd/vflow color apply \
 
 Color reports are adapter reports. They do not directly mutate canonical timeline/framing artifacts.
 
-## Real Fixture Rules
-
-The private CAIR-GA fixture used during development lives under ignored `work/`. Do not publish copied media or provider outputs.
-
-For the prepared fixture:
-
-- Use copied 4K source-camera clips under `media/source-4k/`.
-- Do not use ATEM, ISO, program-output, finished-export, or edited 1080p files.
-- Do not touch `/Volumes/Shams Drive` from this repo workflow.
-- Do not write raw provider keys to the repo or thread.
-
 ## Documentation And Reports
 
 Important docs:

@@ -61,5 +61,5 @@
 
 - Do not invent crop boxes from agent suggestions; use approved preset IDs.
 - Keep frame numbers canonical; seconds are readable derivatives.
-- Prefer source-camera media under project `media/source-4k/` for real fixture tests.
-- Do not touch `/Volumes/Shams Drive` from this project.
+- Prefer copied local fixture media under the project folder for real-media tests.
+- Do not reference private source-drive paths or publish private media artifacts.
