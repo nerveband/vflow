@@ -30,9 +30,9 @@ This audit checks the active goal against current repo state and command output.
 - FCPXML/Premiere XML marker values count as segment identity only when they explicitly contain `vflow:segment-id=...`; plain editor marker labels now trigger the missing-sidecar guardrail.
 - FCPXML retime/media-replacement edits and OTIO time-warp style effects are parsed into needs-review buckets while preserving vflow segment identity.
 - `doctor --local` reports NLE targets, import formats, sidecar export support, blocked roundtrip change types, Resolve package handling, and the remaining real-editor fixture proof gap; CI uses the local doctor gate.
-- The copied `references/Executive Directors.drp` fixture was inspected as local JSON switcher/project state, not a timeline interchange export; `nle import` now detects `.drp`/`.dra`/`.drt` and returns a structured `NLE_IMPORT_PARSE_FAILED` with the actionable instruction to export FCPXML, EDL, or OTIO from Resolve.
-- Copied CAIR-GA fixture probe recognized four copied 3840x2160 source-camera clips under `media/source-4k`.
-- Actual CAIR-GA 30-second CLI render wrote `work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/cair-ga-actual-30s.mp4` from copied source-camera media and verified as 1920x1080 H.264/AAC.
+- A copied local `.drp` fixture was inspected as JSON switcher/project state, not a timeline interchange export; `nle import` now detects `.drp`/`.dra`/`.drt` and returns a structured `NLE_IMPORT_PARSE_FAILED` with the actionable instruction to export FCPXML, EDL, or OTIO from Resolve.
+- Copied local fixture probe recognized multiple 3840x2160 source-camera clips under project-local media.
+- Actual 30-second CLI render from copied local source-camera media verified as 1920x1080 H.264/AAC.
 - Ignored `work/` and `tmp/` proof artifacts were not tracked into the public repo.
 
 ## Improved In Continuation
@@ -76,12 +76,12 @@ Proven:
 - `render verify-transcript` writes a local transcript proof report.
 - NLE sidecars carry `sync_map_ref` and optional source/reference/transcript frame provenance fields.
 
-Group 4 proof:
+Local sync proof:
 
-- Source camera files were read from `/Volumes/Shams Drive/CAIR-GA 10 yr/Group 4 Current Board/Camera Source Files` as inputs only; all writes stayed under ignored `work/test-projects/cair-ga-group-4-current-board-social-30s`.
-- Known alignment was confirmed by command output: transcript `34:19` (`2059s`) maps to 12mm/9mm `40:15` (`2415s`) and 7mm `40:32` (`2432s`).
-- `media extract-ranges --commit` wrote only the needed local 30s range to `media/sync-ranges/group4_known_cta_30s-group4_7mm.mp4`.
-- `render transcript-cut --sync-map --commit` wrote `renders/group4-sync-proof-30s.mp4`.
+- Source camera files were read as local test inputs only; all writes stayed under ignored project-local work directories.
+- Known transcript/reference/source alignment was confirmed by command output.
+- `media extract-ranges --commit` wrote only the needed local 30s range to project-local media.
+- `render transcript-cut --sync-map --commit` wrote a synced 30-second render.
 - `render verify` returned `status: valid`, `1920x1080`, duration `30.03`, H.264, one audio stream, 720 frames.
 - `OPENAI_API_KEY` was present; live OpenAI STT proof against the proof render wrote 82 words under `live-transcript-proof/transcript/`.
 
@@ -96,15 +96,15 @@ Verification:
 
 Additional proof:
 
-- Created `decisions/group4-sync-multiangle-ranges.json` with three transcript-selected ranges across 12mm, 9mm, and 7mm.
+- Created transcript-selected range decisions across three camera angles.
 - `media extract-ranges --commit` wrote local synced range clips under `media/sync-ranges-multiangle/` and `calibration/source-range-manifest-multiangle.json`.
-- `cut create --sync-map --commit` wrote `decisions/group4-sync-multiangle-cut.json`.
-- `render transcript-cut --sync-map --commit` wrote `renders/group4-sync-multiangle-social-30s.mp4`.
+- `cut create --sync-map --commit` wrote a multi-angle transcript cut artifact.
+- `render transcript-cut --sync-map --commit` wrote a multi-angle 30-second render.
 - `render verify` returned `status: valid`, `1920x1080`, duration `30.03`, H.264, one audio stream, and 720 frames.
-- Generated a corrected natural LUT at `calibration/group4-natural-contrast-rfast.cube`; `color apply --commit` wrote `renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4`.
+- Generated a corrected natural LUT; `color apply --commit` wrote a graded 30-second render.
 - The graded render verified as `status: valid`, `1920x1080`, duration `30.03`, H.264, one audio stream, and 720 frames.
 - Visual comparison proof: `reports/frames/sync-multiangle-ungraded-vs-natural-graded-v2-contact-sheet.png`.
-- `render verify-transcript --commit` wrote `reports/group4-sync-multiangle-transcript-proof.json`.
+- `render verify-transcript --commit` wrote a transcript proof report.
 - Live OpenAI STT proof wrote 73 words to `live-transcript-proof-sync-multiangle/transcript/openai-transcription.json`; transcript text matched the intended three-part summary cut.
 - `render verify` now accepts `--project` and resolves relative render paths under the project, matching the rest of the render workflow.
 - The framing contract compiler slice now writes deterministic `decisions/framing-lane.json` and `review/review-queue.json` from approved presets, speaker map, policy, and word-frame artifacts while preserving dry-run-by-default behavior.

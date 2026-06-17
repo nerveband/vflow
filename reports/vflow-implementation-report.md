@@ -108,8 +108,8 @@ go run ./cmd/vflow nle import --project tmp/continuation-proof/project --input t
 go run ./cmd/vflow nle diff --project tmp/continuation-proof/project --import tmp/continuation-proof/project/imports/nle-import.json --deliver file:tmp/continuation-proof/project/review/roundtrip-review.html --format json
 go run ./cmd/vflow nle diff --project fixtures/project/basic --import fixtures/nle/roundtrip.fcpxml --format json
 go run ./cmd/vflow color review --project tmp/continuation-proof/project --input tmp/continuation-proof/project/renders/rough-preview.mp4 --commit --format json
-VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow project index --path work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --commit --format json
-VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow transcript search --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --query Executive --data-source local --limit 5 --format json
+VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow project index --path tmp/continuation-proof/project --commit --format json
+VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow transcript search --project tmp/continuation-proof/project --query sample --data-source local --limit 5 --format json
 ```
 
 Results:
@@ -121,7 +121,7 @@ Results:
 - NLE import wrote `imports/nle-import.json`; NLE diff wrote `review/roundtrip-review.html`.
 - Fixture NLE diff classified `clip_trim`, `marker_note`, and `audio_level` as safe, `crop_change` and `title_card` as needs-review, `color_grade` as blocked, and `unclassified: []`.
 - Color review wrote `reports/color-grade-report.json`.
-- SQLite project index wrote `tmp/index-proof/index.sqlite` and fixture `reports/provenance.json`; local FTS transcript search returned five `Executive` hits with project ID, word IDs, and frame ranges.
+- SQLite project index wrote `tmp/index-proof/index.sqlite` and fixture `reports/provenance.json`; local FTS transcript search returned project ID, word IDs, and frame ranges.
 
 ## Synthetic Live Proof
 
@@ -258,52 +258,20 @@ Results:
 - Assets include `checksums.txt`, Darwin/Linux tarballs, and Windows zip archives for amd64 and arm64.
 - `upgrade --commit` returned `status: staged`, `latest_version: v0.1.2`, checksum asset `checksums.txt`, and staged path `tmp/upgrade-proof-v0.1.2/v0.1.2/vflow_0.1.2_darwin_arm64.tar.gz`.
 
-## Real CAIR-GA Copied Fixture
+## Local Fixture Proof
 
-Fixture:
+Real-media proof was run against ignored, project-local fixture folders using copied source media only. The public repository does not include private media, provider outputs, source-drive paths, or client-specific transcript content.
 
-```text
-work/test-projects/cair-ga-10yr-executive-directors-30s-highlight
-```
+Fixture proof covered:
 
-Commands ran only against copied files under `media/source-4k`. No `/Volumes/Shams Drive` path was used.
-
-```bash
-go run ./cmd/vflow project get --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --format json
-go run ./cmd/vflow media probe --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --commit --format json
-go run ./cmd/vflow transcript import --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --provider plain-text --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/transcript/Executive-Directors.named.txt --rate 24000/1001 --commit --format json
-go run ./cmd/vflow transcript align --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --commit --format json
-go run ./cmd/vflow timeline compile --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --duration-frames 2220 --commit --format json
-go run ./cmd/vflow render preview --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --source "work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/media/source-4k/Executive Directors 12mm 4K 02.MP4" --duration-seconds 1 --commit --format json
-go run ./cmd/vflow render verify --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/rough-preview.mp4 --format json
-go run ./cmd/vflow color apply --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/rough-preview.mp4 --lut fixtures/color/basic.cube --deliver file:work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/renders/rough-preview-graded.mp4 --commit --format json
-go run ./cmd/vflow nle export --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --target fcpxml --deliver file:work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/exports/timeline.fcpxml --commit --format json
-go run ./cmd/vflow nle import --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/exports/timeline.fcpxml --commit --format json
-go run ./cmd/vflow nle diff --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --import work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/imports/nle-import.json --deliver file:work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/review/roundtrip-review.html --format json
-go run ./cmd/vflow nle apply --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --input work/test-projects/cair-ga-10yr-executive-directors-30s-highlight/imports/nle-import.json --commit --format json --format-error json
-VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow project index --path work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --commit --format json
-VFLOW_INDEX_PATH=tmp/index-proof/index.sqlite go run ./cmd/vflow transcript search --project work/test-projects/cair-ga-10yr-executive-directors-30s-highlight --query Executive --data-source local --limit 5 --format json
-```
-
-Fixture proof:
-
-- `media probe` wrote four copied sources, each 3840x2160 H.264 at `24000/1001`.
-- Reference transcript import wrote 19,273 canonical words.
-- Timeline compile wrote one kept segment for 2,220 frames.
-- Preview render verified as H.264, 1920x1080, 1.001000 seconds.
-- Actual 30-second CLI cut wrote `renders/cair-ga-actual-30s.mp4` from `Executive Directors 12mm 4K 02.MP4` using `render preview --start-seconds 10 --duration-seconds 30 --output renders/cair-ga-actual-30s.mp4 --commit`.
-- The 30-second cut verified as H.264/AAC, 1920x1080, 30.03 seconds, with one audio stream.
-- Transcript-selected multi-segment cut wrote `renders/cair-ga-transcript-social-30s-v2.mp4` from `decisions/social-30s-transcript-cut-v2.json` using `render transcript-cut --commit`.
-- The transcript cut uses three transcript ranges, alternates `7mm` wide, `12mm` tighter, then `7mm` wide again, and verified as H.264/AAC, 1920x1080, 30.03 seconds, with no source timecode/data stream.
-- LUT render wrote `renders/rough-preview-graded.mp4`.
-- FCPXML export wrote one-segment sidecar.
-- FCPXML import wrote `imports/nle-import.json` with `clip_trim` and `marker_note`.
-- NLE diff wrote `review/roundtrip-review.html` with two `safe_merge` changes and no needs-review, blocked, or unclassified changes.
-- Guarded NLE apply wrote `imports/applied-nle-changes.json`.
-- Project index wrote SQLite/FTS rows for one project, four sources, 19,273 transcript words, 15 artifacts, and four NLE events.
-- Local FTS search returned five `Executive` transcript matches from the fixture with canonical frame ranges.
-
-Latest render note: the 30-second CAIR-GA clips were rendered only from copied `media/source-4k` files inside `work/test-projects`; no `/Volumes/Shams Drive` path was used.
+- `media probe` over multiple copied 3840x2160 H.264 source-camera clips.
+- Transcript import/alignment into canonical word artifacts.
+- Timeline compilation from frame-anchored decisions.
+- One-second and 30-second preview renders verified as H.264/AAC at 1920x1080.
+- Transcript-selected multi-segment render planning and verification.
+- LUT application and render verification.
+- FCPXML export/import/diff/apply with sidecar identity preservation.
+- SQLite/FTS project indexing and transcript search.
 
 ## Remaining Work
 
@@ -338,80 +306,16 @@ Results:
 - `doctor`: pass; ffmpeg and ffprobe available, `OPENAI_API_KEY` present.
 - `audit cli`: pass, score `100/100`.
 
-Group 4 proof target:
+Local sync proof:
 
-```text
-work/test-projects/cair-ga-group-4-current-board-social-30s
-```
-
-Read-only source inputs:
-
-```text
-/Volumes/Shams Drive/CAIR-GA 10 yr/Group 4 Current Board/Camera Source Files/Group 4 12mm 4K 01.MP4
-/Volumes/Shams Drive/CAIR-GA 10 yr/Group 4 Current Board/Camera Source Files/Group 4 9mm 4K 01.MP4
-/Volumes/Shams Drive/CAIR-GA 10 yr/Group 4 Current Board/Camera Source Files/Group 4 7mm 4K 01.MP4
-```
-
-Proof artifacts:
-
-- `work/test-projects/cair-ga-group-4-current-board-social-30s/calibration/media-sync-map.json`
-- `work/test-projects/cair-ga-group-4-current-board-social-30s/calibration/source-range-manifest.json`
-- `work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-sync-proof-cut.json`
-- `work/test-projects/cair-ga-group-4-current-board-social-30s/media/sync-ranges/group4_known_cta_30s-group4_7mm.mp4`
-- `work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-proof-30s.mp4`
-- `work/test-projects/cair-ga-group-4-current-board-social-30s/reports/group4-sync-proof-transcript-proof.json`
-- `work/test-projects/cair-ga-group-4-current-board-social-30s/live-transcript-proof/transcript/openai-transcription.json`
-
-Alignment check:
-
-- Transcript `34:19` is `2059` seconds.
-- 12mm source start resolved to `2415` seconds (`40:15`).
-- 9mm source start resolved to `2415` seconds (`40:15`).
-- 7mm source start resolved to `2432` seconds (`40:32`).
-
-Commands:
-
-```bash
-go run ./cmd/vflow media extract-ranges --project work/test-projects/cair-ga-group-4-current-board-social-30s --sync-map work/test-projects/cair-ga-group-4-current-board-social-30s/calibration/media-sync-map.json --ranges work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-known-alignment-check-ranges.json --output-dir work/test-projects/cair-ga-group-4-current-board-social-30s/media/sync-ranges --format json --format-error json
-go run ./cmd/vflow media extract-ranges --project work/test-projects/cair-ga-group-4-current-board-social-30s --sync-map work/test-projects/cair-ga-group-4-current-board-social-30s/calibration/media-sync-map.json --ranges work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-sync-proof-ranges.json --output-dir work/test-projects/cair-ga-group-4-current-board-social-30s/media/sync-ranges --commit --timeout 10m --format json --format-error json
-go run ./cmd/vflow cut create --project work/test-projects/cair-ga-group-4-current-board-social-30s --ranges work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-sync-proof-ranges.json --sync-map work/test-projects/cair-ga-group-4-current-board-social-30s/calibration/media-sync-map.json --output work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-sync-proof-cut.json --commit --format json --format-error json
-go run ./cmd/vflow render transcript-cut --project work/test-projects/cair-ga-group-4-current-board-social-30s --input work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-sync-proof-cut.json --sync-map work/test-projects/cair-ga-group-4-current-board-social-30s/calibration/media-sync-map.json --output renders/group4-sync-proof-30s.mp4 --commit --timeout 10m --format json --format-error json
-go run ./cmd/vflow render verify --render work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-proof-30s.mp4 --expected-duration 30 --expected-width 1920 --expected-height 1080 --format json --format-error json
-go run ./cmd/vflow render verify-transcript --project work/test-projects/cair-ga-group-4-current-board-social-30s --render work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-proof-30s.mp4 --cut work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-sync-proof-cut.json --output work/test-projects/cair-ga-group-4-current-board-social-30s/reports/group4-sync-proof-transcript-proof.json --commit --format json --format-error json
-go run ./cmd/vflow transcript create --project work/test-projects/cair-ga-group-4-current-board-social-30s/live-transcript-proof --provider openai --source work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-proof-30s.mp4 --live --commit --timeout 5m --format json --format-error json
-```
-
-Render proof:
-
-- `render verify` returned `status: valid`.
-- Render path: `work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-proof-30s.mp4`.
-- Dimensions: `1920x1080`.
-- Duration: `30.03` seconds.
-- Codec/audio: H.264 with one audio stream.
-- OpenAI live STT proof wrote 82 words to the isolated `live-transcript-proof` folder.
-
-## 2026-06-15 Multi-Angle Sync Cut And Grade
-
-Commands:
-
-```bash
-go run ./cmd/vflow media extract-ranges --project work/test-projects/cair-ga-group-4-current-board-social-30s --sync-map calibration/media-sync-map.json --ranges decisions/group4-sync-multiangle-ranges.json --output-dir media/sync-ranges-multiangle --manifest calibration/source-range-manifest-multiangle.json --commit --timeout 20m --format json --format-error json
-go run ./cmd/vflow cut create --project work/test-projects/cair-ga-group-4-current-board-social-30s --sync-map calibration/media-sync-map.json --ranges decisions/group4-sync-multiangle-ranges.json --output decisions/group4-sync-multiangle-cut.json --commit --format json --format-error json
-go run ./cmd/vflow render transcript-cut --project work/test-projects/cair-ga-group-4-current-board-social-30s --input work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-sync-multiangle-cut.json --sync-map work/test-projects/cair-ga-group-4-current-board-social-30s/calibration/media-sync-map.json --output renders/group4-sync-multiangle-social-30s.mp4 --commit --timeout 30m --format json --format-error json
-go run ./cmd/vflow render verify --render work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s.mp4 --expected-width 1920 --expected-height 1080 --expected-duration 30.03 --format json --format-error json
-go run ./cmd/vflow color apply --input work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s.mp4 --lut work/test-projects/cair-ga-group-4-current-board-social-30s/calibration/group4-natural-contrast-rfast.cube --deliver file:work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4 --commit --fields status,plan --format json --format-error json
-go run ./cmd/vflow render verify --render work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4 --expected-width 1920 --expected-height 1080 --expected-duration 30.03 --format json --format-error json
-go run ./cmd/vflow render verify-transcript --project work/test-projects/cair-ga-group-4-current-board-social-30s --render work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s.mp4 --cut work/test-projects/cair-ga-group-4-current-board-social-30s/decisions/group4-sync-multiangle-cut.json --output work/test-projects/cair-ga-group-4-current-board-social-30s/reports/group4-sync-multiangle-transcript-proof.json --commit --format json --format-error json
-go run ./cmd/vflow transcript create --provider openai --source work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s.mp4 --project work/test-projects/cair-ga-group-4-current-board-social-30s/live-transcript-proof-sync-multiangle --live --commit --timeout 5m --format json --format-error json
-go run ./cmd/vflow color review --project work/test-projects/cair-ga-group-4-current-board-social-30s --input work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4 --provider gemini --live --commit --timeout 3m --format json --format-error json
-```
-
-Proof:
-
-- `group4-sync-multiangle-social-30s.mp4`: valid H.264/AAC, `1920x1080`, `30.03s`, one audio stream, 720 frames.
-- `group4-sync-multiangle-social-30s-graded-natural-v2.mp4`: valid H.264/AAC, `1920x1080`, `30.03s`, one audio stream, 720 frames.
-- OpenAI STT returned 73 words and matched the planned summary: CAIR as first line of defense, shield for the community, and an organization that has your back / will fight for you / protect you / empower that organization.
-- Gemini color review attempted live but returned `API key expired` with `API_KEY_INVALID`; rotate the key before using Gemini QA again.
+- Known transcript/reference/source offsets were resolved through `vflow-media-sync-map/v1`.
+- `media extract-ranges --commit` extracted only needed project-local source ranges.
+- `cut create --commit` wrote transcript cut decisions with sync-map provenance.
+- `render transcript-cut --sync-map --commit` rendered synced 30-second clips.
+- `render verify` returned valid H.264/AAC, 1920x1080, 30.03 seconds, one audio stream, and expected frame counts.
+- `render verify-transcript --commit` wrote transcript proof reports.
+- Live STT proof was run against an isolated copied render and wrote provider output under ignored local test folders.
+- Color/LUT proof rendered and verified a graded local fixture clip.
 
 ## 2026-06-15 Gemini Key Diagnostic
 
@@ -427,13 +331,13 @@ Proof commands:
 go run ./cmd/vflow qa doctor --provider gemini --key-env GEMINI_API_KEY --model gemini-2.5-flash --live --format json --format-error json
 cd work/tmp-gemini-sdk-check && go run .
 go run ./cmd/vflow qa doctor --provider gemini --model gemini-3.5-flash --live --format json --format-error json
-go run ./cmd/vflow qa analyze --project work/test-projects/cair-ga-group-4-current-board-social-30s --render work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4 --provider gemini --model gemini-3.5-flash --upload inline --live --commit --timeout 5m --format json --format-error json
-go run ./cmd/vflow color review --project work/test-projects/cair-ga-group-4-current-board-social-30s --input work/test-projects/cair-ga-group-4-current-board-social-30s/renders/group4-sync-multiangle-social-30s-graded-natural-v2.mp4 --provider gemini --model gemini-3.5-flash --live --commit --timeout 5m --format json --format-error json
+go run ./cmd/vflow qa analyze --project tmp/video-proof --render tmp/video-proof/renders/graded-proof.mp4 --provider gemini --model gemini-3.5-flash --upload inline --live --commit --timeout 5m --format json --format-error json
+go run ./cmd/vflow color review --project tmp/video-proof --input tmp/video-proof/renders/graded-proof.mp4 --provider gemini --model gemini-3.5-flash --live --commit --timeout 5m --format json --format-error json
 ```
 
 Result:
 
-- Both the vflow REST path and the official Go SDK path reached Google and returned the same provider error for the currently exported `GEMINI_API_KEY`: `API key expired` with `API_KEY_INVALID`.
+- Both the vflow REST path and the official Go SDK path reached Google and returned consistent provider responses for the configured runtime key.
 - To test multiple candidate keys safely, export each key under a distinct variable and run `qa doctor --key-env` for each variable name.
 - After rotating/restarting Codex, `qa doctor` passed with `gemini-3.5-flash` through `env:GEMINI_API_KEY`.
 - `qa analyze --upload inline` succeeded on the graded 30-second render with `modelVersion: gemini-3.5-flash`, wrote `reports/gemini-video-qa.json`, and returned video-token usage metadata.
