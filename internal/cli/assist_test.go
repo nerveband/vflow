@@ -77,6 +77,32 @@ func TestVerifyCaptionsHappyPath(t *testing.T) {
 	project := t.TempDir()
 	writeAssistFixture(t, project)
 	specPath := filepath.Join(project, "decisions", "caption-cues.json")
+	outputPath := filepath.Join(project, "artifacts", "captions.srt")
+	writeTestJSONFile(t, specPath, map[string]any{
+		"version":          "vflow-caption-cues/v1",
+		"words_ref":        "transcript/words.json",
+		"style_id":         "caption.default",
+		"filler_clean":     true,
+		"max_drift_frames": 1,
+		"cues": []map[string]any{{
+			"id": "cap_001", "text": "hello", "word_ids": []string{"w1"}, "start_frame": 0, "end_frame": 15,
+		}},
+	})
+	writeTestTextFile(t, outputPath, "1\n00:00:00,000 --> 00:00:00,500\nhello\n")
+
+	out, errOut, code := runCLI(t, "verify", "captions", "--project", project, "--spec", specPath, "--output", outputPath, "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(out, `"status": "passed"`) || strings.Contains(out, "review_queue_path") {
+		t.Fatalf("caption happy path should pass without review queue:\n%s", out)
+	}
+}
+
+func TestVerifyCaptionsFailsMissingOutput(t *testing.T) {
+	project := t.TempDir()
+	writeAssistFixture(t, project)
+	specPath := filepath.Join(project, "decisions", "caption-cues.json")
 	writeTestJSONFile(t, specPath, map[string]any{
 		"version":          "vflow-caption-cues/v1",
 		"words_ref":        "transcript/words.json",
@@ -88,12 +114,38 @@ func TestVerifyCaptionsHappyPath(t *testing.T) {
 		}},
 	})
 
-	out, errOut, code := runCLI(t, "verify", "captions", "--project", project, "--spec", specPath, "--format", "json", "--format-error", "json")
+	out, errOut, code := runCLI(t, "verify", "captions", "--project", project, "--spec", specPath, "--output", filepath.Join(project, "missing.srt"), "--format", "json", "--format-error", "json")
 	if code != 0 {
-		t.Fatalf("expected success, got %d stderr=%s", code, errOut)
+		t.Fatalf("expected reviewable success, got %d stderr=%s", code, errOut)
 	}
-	if !strings.Contains(out, `"status": "passed"`) || strings.Contains(out, "review_queue_path") {
-		t.Fatalf("caption happy path should pass without review queue:\n%s", out)
+	if !strings.Contains(out, `"status": "failed"`) || !strings.Contains(out, "caption_output_missing") {
+		t.Fatalf("missing output should fail verification:\n%s", out)
+	}
+}
+
+func TestVerifyCaptionsFailsDriftedSRTOutput(t *testing.T) {
+	project := t.TempDir()
+	writeAssistFixture(t, project)
+	specPath := filepath.Join(project, "decisions", "caption-cues.json")
+	outputPath := filepath.Join(project, "artifacts", "drifted.srt")
+	writeTestJSONFile(t, specPath, map[string]any{
+		"version":          "vflow-caption-cues/v1",
+		"words_ref":        "transcript/words.json",
+		"style_id":         "caption.default",
+		"filler_clean":     true,
+		"max_drift_frames": 1,
+		"cues": []map[string]any{{
+			"id": "cap_001", "text": "hello", "word_ids": []string{"w1"}, "start_frame": 0, "end_frame": 15,
+		}},
+	})
+	writeTestTextFile(t, outputPath, "1\n00:00:02,000 --> 00:00:02,500\nhello\n")
+
+	out, errOut, code := runCLI(t, "verify", "captions", "--project", project, "--spec", specPath, "--output", outputPath, "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("expected reviewable success, got %d stderr=%s", code, errOut)
+	}
+	if !strings.Contains(out, `"status": "failed"`) || !strings.Contains(out, "caption_output_timing_drift") {
+		t.Fatalf("drifted SRT should fail verification:\n%s", out)
 	}
 }
 
@@ -263,6 +315,16 @@ func writeTestJSONFile(t *testing.T, path string, value any) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, append(raw, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestTextFile(t *testing.T, path, value string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(value), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

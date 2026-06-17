@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	vframing "github.com/nerveband/vflow/internal/framing"
@@ -129,7 +131,7 @@ func Suggest(task, project string) (Suggestion, error) {
 func Verify(task, project, specPath, outputPath string) (VerifyResult, error) {
 	switch task {
 	case "captions":
-		return verifyCaptions(project, specPath)
+		return verifyCaptions(project, specPath, outputPath)
 	case "audio":
 		return verifyAudio(project, specPath, outputPath)
 	case "supers":
@@ -153,7 +155,7 @@ func adaptersForTask(task string) []Adapter {
 	return out
 }
 
-func verifyCaptions(project, specPath string) (VerifyResult, error) {
+func verifyCaptions(project, specPath, outputPath string) (VerifyResult, error) {
 	var spec struct {
 		Version  string `json:"version"`
 		WordsRef string `json:"words_ref"`
@@ -217,7 +219,52 @@ func verifyCaptions(project, specPath string) (VerifyResult, error) {
 			addFailure(&result, "caption_timing_drift", fmt.Sprintf("caption cue %s drifts beyond %d frames", cue.ID, maxDrift), cue.StartFrame, cue.EndFrame)
 		}
 	}
+	if outputPath != "" {
+		verifyCaptionOutput(project, outputPath, spec.Cues, maxDrift, words.Rate, &result)
+	}
 	return finishResult(result), nil
+}
+
+func verifyCaptionOutput(project, outputPath string, cues []struct {
+	ID         string   `json:"id"`
+	Text       string   `json:"text"`
+	WordIDs    []string `json:"word_ids"`
+	StartFrame int64    `json:"start_frame"`
+	EndFrame   int64    `json:"end_frame"`
+}, maxDrift int64, rate string, result *VerifyResult) {
+	path := resolveProjectPath(project, outputPath)
+	info, err := os.Stat(path)
+	if err != nil {
+		addFailure(result, "caption_output_missing", "caption output file is missing", 0, 1)
+		return
+	}
+	if info.Size() == 0 {
+		addFailure(result, "caption_output_empty", "caption output file is empty", 0, 1)
+		return
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		addFailure(result, "caption_output_read_failed", err.Error(), 0, 1)
+		return
+	}
+	outputCues, err := parseSRTCues(string(raw), rate)
+	if err != nil {
+		addFailure(result, "caption_output_invalid", err.Error(), 0, 1)
+		return
+	}
+	if len(outputCues) != len(cues) {
+		addFailure(result, "caption_output_cue_count", fmt.Sprintf("caption output has %d cues; spec has %d", len(outputCues), len(cues)), 0, 1)
+		return
+	}
+	for i, cue := range cues {
+		outputCue := outputCues[i]
+		if abs64(outputCue.StartFrame-cue.StartFrame) > maxDrift || abs64(outputCue.EndFrame-cue.EndFrame) > maxDrift {
+			addFailure(result, "caption_output_timing_drift", fmt.Sprintf("caption output cue %s drifts beyond %d frames", cue.ID, maxDrift), cue.StartFrame, cue.EndFrame)
+		}
+		if normalizedCaptionText(outputCue.Text) != "" && normalizedCaptionText(cue.Text) != "" && normalizedCaptionText(outputCue.Text) != normalizedCaptionText(cue.Text) {
+			addFailure(result, "caption_output_text_mismatch", fmt.Sprintf("caption output cue %s text does not match spec", cue.ID), cue.StartFrame, cue.EndFrame)
+		}
+	}
 }
 
 func verifyAudio(project, specPath, outputPath string) (VerifyResult, error) {
@@ -394,6 +441,113 @@ func readJSON(path string, target any) error {
 		return err
 	}
 	return json.Unmarshal(raw, target)
+}
+
+type srtCue struct {
+	StartFrame int64
+	EndFrame   int64
+	Text       string
+}
+
+func parseSRTCues(raw, rate string) ([]srtCue, error) {
+	blocks := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n\n")
+	cues := []srtCue{}
+	timeLine := regexp.MustCompile(`^\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})`)
+	for _, block := range blocks {
+		lines := nonEmptyLines(block)
+		if len(lines) == 0 {
+			continue
+		}
+		timeIndex := 0
+		if len(lines) > 1 && !strings.Contains(lines[0], "-->") {
+			timeIndex = 1
+		}
+		if timeIndex >= len(lines) {
+			continue
+		}
+		matches := timeLine.FindStringSubmatch(lines[timeIndex])
+		if matches == nil {
+			return nil, fmt.Errorf("invalid SRT cue timing line %q", lines[timeIndex])
+		}
+		start, err := srtTimestampToFrames(matches[1], rate)
+		if err != nil {
+			return nil, err
+		}
+		end, err := srtTimestampToFrames(matches[2], rate)
+		if err != nil {
+			return nil, err
+		}
+		text := ""
+		if timeIndex+1 < len(lines) {
+			text = strings.Join(lines[timeIndex+1:], " ")
+		}
+		cues = append(cues, srtCue{StartFrame: start, EndFrame: end, Text: text})
+	}
+	if len(cues) == 0 {
+		return nil, fmt.Errorf("caption output contains no SRT cues")
+	}
+	return cues, nil
+}
+
+func nonEmptyLines(block string) []string {
+	out := []string{}
+	for _, line := range strings.Split(block, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func srtTimestampToFrames(value, rate string) (int64, error) {
+	parts := strings.Split(strings.ReplaceAll(value, ",", "."), ":")
+	if len(parts) != 3 {
+		return 0, fmt.Errorf("invalid SRT timestamp %q", value)
+	}
+	hours, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, fmt.Errorf("invalid SRT timestamp %q", value)
+	}
+	minutes, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, fmt.Errorf("invalid SRT timestamp %q", value)
+	}
+	seconds, err := strconv.ParseFloat(parts[2], 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid SRT timestamp %q", value)
+	}
+	totalSeconds := float64(hours*3600+minutes*60) + seconds
+	return int64(math.Round(totalSeconds * frameRate(rate))), nil
+}
+
+func frameRate(rate string) float64 {
+	if rate == "" {
+		return 30
+	}
+	if strings.Contains(rate, "/") {
+		parts := strings.SplitN(rate, "/", 2)
+		numerator, numeratorErr := strconv.ParseFloat(parts[0], 64)
+		denominator, denominatorErr := strconv.ParseFloat(parts[1], 64)
+		if numeratorErr == nil && denominatorErr == nil && denominator != 0 {
+			return numerator / denominator
+		}
+	}
+	if parsed, err := strconv.ParseFloat(rate, 64); err == nil && parsed > 0 {
+		return parsed
+	}
+	return 30
+}
+
+func normalizedCaptionText(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(value), " "))
+}
+
+func resolveProjectPath(project, path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(project, path)
 }
 
 func readSpeakerPeople(project, ref string) map[string]speakerPerson {
