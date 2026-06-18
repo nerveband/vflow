@@ -46,6 +46,12 @@ func Export(opts Options, segments []Segment) ExportResult {
 		if segment.SourceMediaID == "" {
 			segment.SourceMediaID = opts.SourceMediaID
 		}
+		if segment.TrackID == "" {
+			segment.TrackID = "v1"
+		}
+		if segment.TrackKind == "" {
+			segment.TrackKind = "video"
+		}
 		if segment.SyncMapRef == "" {
 			segment.SyncMapRef = opts.SyncMapRef
 		}
@@ -228,9 +234,20 @@ func exportMLT(opts Options, segments []Segment) string {
 }
 
 func exportOTIO(opts Options, segments []Segment) string {
-	clips := make([]map[string]any, 0, len(segments))
+	tracks := map[string][]map[string]any{}
+	trackOrder := []string{}
+	trackKinds := map[string]string{}
 	for _, segment := range segments {
-		clips = append(clips, map[string]any{
+		trackID := firstNonEmpty(segment.TrackID, "v1")
+		if _, ok := tracks[trackID]; !ok {
+			trackOrder = append(trackOrder, trackID)
+		}
+		kind := "Video"
+		if strings.EqualFold(segment.TrackKind, "audio") {
+			kind = "Audio"
+		}
+		trackKinds[trackID] = kind
+		tracks[trackID] = append(tracks[trackID], map[string]any{
 			"OTIO_SCHEMA": "Clip.1",
 			"name":        segment.VflowSegmentID,
 			"effects":     []any{},
@@ -247,6 +264,19 @@ func exportOTIO(opts Options, segments []Segment) string {
 			"source_range": timeRange(segment.SourceFrameIn, segment.SourceFrameOut-segment.SourceFrameIn, opts.Rate),
 		})
 	}
+	children := make([]map[string]any, 0, len(trackOrder))
+	for _, trackID := range trackOrder {
+		children = append(children, map[string]any{
+			"OTIO_SCHEMA":  "Track.1",
+			"name":         trackID,
+			"kind":         trackKinds[trackID],
+			"effects":      []any{},
+			"markers":      []any{},
+			"metadata":     map[string]any{"vflow": map[string]any{"track_id": trackID}},
+			"source_range": nil,
+			"children":     tracks[trackID],
+		})
+	}
 	raw, _ := json.MarshalIndent(map[string]any{
 		"OTIO_SCHEMA": "Timeline.1",
 		"name":        "vflow",
@@ -258,19 +288,54 @@ func exportOTIO(opts Options, segments []Segment) string {
 			"markers":      []any{},
 			"metadata":     map[string]any{},
 			"source_range": nil,
-			"children": []map[string]any{{
-				"OTIO_SCHEMA":  "Track.1",
-				"name":         "Video 1",
-				"kind":         "Video",
-				"effects":      []any{},
-				"markers":      []any{},
-				"metadata":     map[string]any{},
-				"source_range": nil,
-				"children":     clips,
-			}},
+			"children":     children,
 		},
 	}, "", "  ")
 	return string(raw)
+}
+
+func Verify(sidecar Sidecar, expected []Segment) VerifyReport {
+	report := VerifyReport{
+		Version:      "vflow-nle-verify/v1",
+		Status:       "valid",
+		Target:       sidecar.Target,
+		SegmentCount: len(sidecar.Segments),
+		Issues:       []VerifyIssue{},
+	}
+	expectedByID := map[string]Segment{}
+	for _, segment := range expected {
+		expectedByID[firstNonEmpty(segment.VflowSegmentID, segment.ID)] = segment
+	}
+	lastOut := -1
+	for _, segment := range sidecar.Segments {
+		segmentID := firstNonEmpty(segment.VflowSegmentID, segment.ID)
+		if segment.VflowSegmentID == "" {
+			report.Issues = append(report.Issues, VerifyIssue{Code: "MISSING_SIDECAR_ID", Severity: "blocked", SegmentID: segment.ID, Message: "sidecar segment is missing vflow_segment_id"})
+		}
+		if len(segment.MarkerIDs) == 0 {
+			report.Issues = append(report.Issues, VerifyIssue{Code: "MISSING_MARKER_ID", Severity: "blocked", SegmentID: segmentID, Message: "sidecar segment has no roundtrip marker IDs"})
+		}
+		if segment.SourceFrameOut <= segment.SourceFrameIn || segment.TimelineFrameOut <= segment.TimelineFrameIn {
+			report.Issues = append(report.Issues, VerifyIssue{Code: "INVALID_FRAME_RANGE", Severity: "blocked", SegmentID: segmentID, Message: "source and timeline frame ranges must have positive duration"})
+		}
+		if lastOut >= 0 && segment.TimelineFrameIn < lastOut {
+			report.Issues = append(report.Issues, VerifyIssue{Code: "TIMELINE_OVERLAP", Severity: "blocked", SegmentID: segmentID, Message: "timeline ranges overlap"})
+		}
+		lastOut = segment.TimelineFrameOut
+		if expectedSegment, ok := expectedByID[segmentID]; ok {
+			if expectedSegment.SourceFrameIn != segment.SourceFrameIn || expectedSegment.SourceFrameOut != segment.SourceFrameOut || expectedSegment.TimelineFrameIn != segment.TimelineFrameIn || expectedSegment.TimelineFrameOut != segment.TimelineFrameOut {
+				report.Issues = append(report.Issues, VerifyIssue{Code: "TRIM_DRIFT", Severity: "blocked", SegmentID: segmentID, Message: "sidecar frame mapping drifted from canonical timeline"})
+			}
+		}
+	}
+	for _, issue := range report.Issues {
+		if issue.Severity == "blocked" {
+			report.Status = "blocked"
+			break
+		}
+		report.Status = "review"
+	}
+	return report
 }
 
 func timeRange(start, duration, rate int) map[string]any {

@@ -188,6 +188,8 @@ Canonical artifacts include:
 - `calibration/speaker-map.json`
 - `decisions/framing-lane.json`
 - `timeline/compiled-timeline.json`
+- `timeline/vflow-timeline.json`
+- `timeline/multicam-timeline.json`
 - `review/review-queue.json`
 - `reports/render-report.json`
 - `reports/gemini-video-qa.json`
@@ -511,6 +513,28 @@ go run ./cmd/vflow nle export \
   --format-error json
 ```
 
+Verify the export sidecar before handing the timeline to an editor:
+
+```bash
+go run ./cmd/vflow nle verify \
+  --project tmp/demo \
+  --sidecar tmp/demo/exports/sidecars/fcpxml-vflow-sidecar.json \
+  --format json \
+  --format-error json
+```
+
+Create a stacked-track multicam timeline from a sync map:
+
+```bash
+go run ./cmd/vflow multicam create \
+  --project tmp/demo \
+  --sync-map tmp/demo/decisions/media-sync-map.json \
+  --duration-frames 900 \
+  --commit \
+  --format json \
+  --format-error json
+```
+
 Import an edited interchange file:
 
 ```bash
@@ -547,10 +571,14 @@ go run ./cmd/vflow nle apply \
 Guardrails:
 
 - Every NLE export writes a sidecar mapping source frames to timeline frames.
+- `timeline/vflow-timeline.json` is the canonical `vflow-timeline/v1` decision artifact. OTIO, FCPXML, XMEML, MLT, EDL, and Resolve-style FCPXML are adapters.
+- OTIO export preserves stable clip IDs, linked audio/video IDs, track IDs, and vflow metadata where the target format can carry it.
+- `nle verify` checks sidecar coverage, clip identity, frame mapping, missing markers, and trim drift against canonical timeline data when available.
 - Ambiguous, identity-less, or high-risk editor changes are blocked or routed to review.
 - Missing sidecar identity is not safe-merged.
 - Speed changes, media replacement, color grades, complex effects, plugin effects, nested timelines, and keyframed transforms require review or are blocked.
 - Resolve `.drp`, `.dra`, and `.drt` project packages are not treated as interchange files; export FCPXML, EDL, or OTIO first.
+- Palmier remains an experimental external editor lane, not a first-party vflow backend. Recommended handoff is vflow canonical JSON -> OTIO/XML adapters -> Resolve/FCP/Premiere/Shotcut or another editor for finishing.
 
 ## Color And LUT Workflow
 

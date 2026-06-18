@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow canonical timeline",
+  "type": "object",
+  "required": ["version", "fps", "duration_frames", "tracks"],
+  "properties": {
+    "version": {"const": "vflow-timeline/v1"},
+    "fps": {"type": "string", "minLength": 1},
+    "duration_frames": {"type": "integer", "minimum": 0},
+    "sync_map_refs": {"type": "array", "items": {"type": "string"}},
+    "transcript_anchors": {"type": "array", "items": {"$ref": "#/$defs/transcript_anchor"}},
+    "multicam_groups": {"type": "array", "items": {"$ref": "#/$defs/multicam_group"}},
+    "active_angle_spans": {"type": "array", "items": {"$ref": "#/$defs/active_angle_span"}},
+    "tracks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/track"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "range": {
+      "type": "object",
+      "required": ["start_frame", "end_frame"],
+      "properties": {
+        "start_frame": {"type": "integer", "minimum": 0},
+        "end_frame": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "track": {
+      "type": "object",
+      "required": ["id", "track_type", "clips"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "track_type": {"type": "string", "enum": ["video", "audio"]},
+        "name": {"type": "string"},
+        "clips": {"type": "array", "items": {"$ref": "#/$defs/clip"}}
+      },
+      "additionalProperties": false
+    },
+    "clip": {
+      "type": "object",
+      "required": ["id", "stable_clip_id", "track_id", "track_type", "source_range", "timeline_range"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "stable_clip_id": {"type": "string", "minLength": 1},
+        "track_id": {"type": "string", "minLength": 1},
+        "track_type": {"type": "string", "enum": ["video", "audio"]},
+        "source_media_id": {"type": "string"},
+        "linked_clip_id": {"type": "string"},
+        "sync_map_ref": {"type": "string"},
+        "transcript_anchor": {"type": "string"},
+        "multicam_group_id": {"type": "string"},
+        "angle_id": {"type": "string"},
+        "source_range": {"$ref": "#/$defs/range"},
+        "timeline_range": {"$ref": "#/$defs/range"}
+      },
+      "additionalProperties": false
+    },
+    "transcript_anchor": {
+      "type": "object",
+      "required": ["id", "transcript_frame_in", "transcript_frame_out", "clip_id"],
+      "properties": {
+        "id": {"type": "string"},
+        "transcript_frame_in": {"type": "integer", "minimum": 0},
+        "transcript_frame_out": {"type": "integer", "minimum": 0},
+        "clip_id": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "multicam_group": {
+      "type": "object",
+      "required": ["id", "sync_map_ref", "reference_angle", "angle_ids"],
+      "properties": {
+        "id": {"type": "string"},
+        "sync_map_ref": {"type": "string"},
+        "reference_angle": {"type": "string"},
+        "angle_ids": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "active_angle_span": {
+      "type": "object",
+      "required": ["id", "multicam_group_id", "angle_id", "timeline_range"],
+      "properties": {
+        "id": {"type": "string"},
+        "multicam_group_id": {"type": "string"},
+        "angle_id": {"type": "string"},
+        "timeline_range": {"$ref": "#/$defs/range"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -124,6 +124,7 @@ func NewRootCommand() *cobra.Command {
 		qaCommand(opts),
 		colorCommand(opts),
 		nleCommand(opts),
+		multicamCommand(opts),
 		jobsCommand(opts),
 		artifactsCommand(opts),
 		upgradeCommand(opts),
@@ -193,7 +194,7 @@ func agentContextCommand(opts *globalOptions) *cobra.Command {
 					"live":    []string{"gemini via GEMINI_API_KEY", "openai via OPENAI_API_KEY", "optional STT provider env vars"},
 				},
 				"nle_targets":       []string{"resolve", "fcpxml", "premiere", "otio", "edl", "mlt", "sidecar"},
-				"artifact_contract": []string{"project.json", "source-media-review.json", "transcript/words.json", "decisions/content-edl.json", "decisions/time-map.json", "timeline/compiled-timeline.json", "reports/provenance.json", "~/.vflow/index.sqlite"},
+				"artifact_contract": []string{"project.json", "source-media-review.json", "transcript/words.json", "decisions/content-edl.json", "decisions/time-map.json", "timeline/compiled-timeline.json", "timeline/vflow-timeline.json", "timeline/multicam-timeline.json", "reports/provenance.json", "~/.vflow/index.sqlite"},
 			}
 			return writeOutput(cmd, opts, "agent-context", data)
 		},
@@ -744,17 +745,20 @@ func artifactSchemaNames() []string {
 		"framing-lane.schema.json",
 		"review-queue.schema.json",
 		"compiled-timeline.schema.json",
+		"vflow-timeline.schema.json",
 		"gemini-video-qa.schema.json",
 		"provider-bakeoff.schema.json",
 		"color-grade-report.schema.json",
 		"nle-diff.schema.json",
 		"nle-sidecar.schema.json",
+		"nle-verify.schema.json",
 		"provenance.schema.json",
 		"render-report.schema.json",
 		"audit-report.schema.json",
 		"media-sync-map.schema.json",
 		"source-range-manifest.schema.json",
 		"transcript-proof.schema.json",
+		"multicam-cut.schema.json",
 	}
 }
 
@@ -3013,7 +3017,7 @@ func colorExportLUTCommand(opts *globalOptions) *cobra.Command {
 
 func nleCommand(opts *globalOptions) *cobra.Command {
 	parent := &cobra.Command{Use: "nle", Short: "NLE exchange commands"}
-	parent.AddCommand(nleExportCommand(opts), nleImportCommand(opts), nleDiffCommand(opts), nleAcceptCommand(opts), nleApplyCommand(opts))
+	parent.AddCommand(nleExportCommand(opts), nleImportCommand(opts), nleDiffCommand(opts), nleVerifyCommand(opts), nleAcceptCommand(opts), nleApplyCommand(opts))
 	return parent
 }
 
@@ -3031,23 +3035,7 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 			if outputPath == "" || outputPath == deliver {
 				outputPath = filepath.Join(projectPath, "exports", "timeline."+target)
 			}
-			segments := []vnle.Segment{{ID: "seg_000001", SourceFrameIn: 0, SourceFrameOut: 90, TimelineFrameIn: 0, TimelineFrameOut: 90}}
-			if raw, err := os.ReadFile(filepath.Join(projectPath, "timeline", "compiled-timeline.json")); err == nil {
-				var tl vtimeline.CompiledTimeline
-				if err := json.Unmarshal(raw, &tl); err == nil && len(tl.Segments) > 0 {
-					segments = make([]vnle.Segment, 0, len(tl.Segments))
-					for _, segment := range tl.Segments {
-						segments = append(segments, vnle.Segment{
-							ID:               segment.ID,
-							SyncMapRef:       syncMapPath,
-							SourceFrameIn:    segment.SourceFrameIn,
-							SourceFrameOut:   segment.SourceFrameOut,
-							TimelineFrameIn:  segment.TimelineFrameIn,
-							TimelineFrameOut: segment.TimelineFrameOut,
-						})
-					}
-				}
-			}
+			segments := loadNLESegments(projectPath, syncMapPath)
 			res := vnle.Export(vnle.Options{Target: target, Output: outputPath, SyncMapRef: syncMapPath}, segments)
 			status := "planned"
 			if opts.Commit {
@@ -3063,6 +3051,75 @@ func nleExportCommand(opts *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&target, "target", "fcpxml", "export target")
 	cmd.Flags().StringVar(&deliver, "deliver", "", "delivery target")
 	cmd.Flags().StringVar(&syncMapPath, "sync-map", "", "vflow-media-sync-map/v1 sidecar reference")
+	return cmd
+}
+
+func loadNLESegments(projectPath, syncMapPath string) []vnle.Segment {
+	if raw, err := os.ReadFile(filepath.Join(projectPath, "timeline", "vflow-timeline.json")); err == nil {
+		var tl vtimeline.Timeline
+		if err := json.Unmarshal(raw, &tl); err == nil && len(tl.Tracks) > 0 {
+			var segments []vnle.Segment
+			for _, track := range tl.Tracks {
+				for _, clip := range track.Clips {
+					segments = append(segments, vnle.Segment{
+						ID:               clip.ID,
+						VflowSegmentID:   clip.StableClipID,
+						TrackID:          firstNonEmptyString(clip.TrackID, track.ID),
+						TrackKind:        firstNonEmptyString(clip.TrackType, track.TrackType),
+						LinkedClipID:     clip.LinkedClipID,
+						SourceMediaID:    firstNonEmptyString(clip.SourceMediaID, "source"),
+						SyncMapRef:       firstNonEmptyString(clip.SyncMapRef, syncMapPath),
+						SourceFrameIn:    clip.SourceRange.StartFrame,
+						SourceFrameOut:   clip.SourceRange.EndFrame,
+						TimelineFrameIn:  clip.TimelineRange.StartFrame,
+						TimelineFrameOut: clip.TimelineRange.EndFrame,
+					})
+				}
+			}
+			if len(segments) > 0 {
+				return segments
+			}
+		}
+	}
+	if raw, err := os.ReadFile(filepath.Join(projectPath, "timeline", "compiled-timeline.json")); err == nil {
+		var tl vtimeline.CompiledTimeline
+		if err := json.Unmarshal(raw, &tl); err == nil && len(tl.Segments) > 0 {
+			segments := make([]vnle.Segment, 0, len(tl.Segments))
+			for _, segment := range tl.Segments {
+				segments = append(segments, vnle.Segment{
+					ID:               segment.ID,
+					SyncMapRef:       syncMapPath,
+					SourceFrameIn:    segment.SourceFrameIn,
+					SourceFrameOut:   segment.SourceFrameOut,
+					TimelineFrameIn:  segment.TimelineFrameIn,
+					TimelineFrameOut: segment.TimelineFrameOut,
+				})
+			}
+			return segments
+		}
+	}
+	return []vnle.Segment{{ID: "seg_000001", SourceFrameIn: 0, SourceFrameOut: 90, TimelineFrameIn: 0, TimelineFrameOut: 90}}
+}
+
+func nleVerifyCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, sidecarPath string
+	cmd := &cobra.Command{Use: "verify", Short: "verify NLE export sidecar coverage", RunE: func(cmd *cobra.Command, args []string) error {
+		if sidecarPath == "" {
+			sidecarPath = filepath.Join(projectPath, "exports", "sidecars", "fcpxml-vflow-sidecar.json")
+		}
+		raw, err := os.ReadFile(resolveProjectInputPath(projectPath, sidecarPath))
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("NLE_SIDECAR_READ_FAILED", err.Error(), "Pass --sidecar or run nle export --commit first", false))
+		}
+		var sidecar vnle.Sidecar
+		if err := json.Unmarshal(raw, &sidecar); err != nil {
+			return writeStructuredError(cmd, opts, verrors.Validation("NLE_SIDECAR_INVALID", err.Error(), "Check vflow-nle-sidecar/v1 JSON", false))
+		}
+		report := vnle.Verify(sidecar, loadNLESegments(projectPath, sidecar.SyncMapRef))
+		return writeOutput(cmd, opts, "nle verify", report)
+	}}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&sidecarPath, "sidecar", "", "vflow NLE sidecar path")
 	return cmd
 }
 
@@ -3299,6 +3356,129 @@ func nleApplyCommand(opts *globalOptions) *cobra.Command {
 	}}
 	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
 	cmd.Flags().StringVar(&input, "input", "", "accepted changes artifact")
+	return cmd
+}
+
+func multicamCommand(opts *globalOptions) *cobra.Command {
+	parent := &cobra.Command{Use: "multicam", Short: "multicam timeline commands"}
+	parent.AddCommand(multicamCreateCommand(opts), multicamCutCommand(opts))
+	return parent
+}
+
+func multicamCreateCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, syncMapPath, outputPath string
+	var durationFrames int
+	cmd := &cobra.Command{Use: "create", Short: "create a canonical stacked-track multicam timeline from a sync map", RunE: func(cmd *cobra.Command, args []string) error {
+		if syncMapPath == "" {
+			syncMapPath = filepath.Join(projectPath, "decisions", "media-sync-map.json")
+		}
+		syncMap, err := vsyncmap.Read(resolveProjectInputPath(projectPath, syncMapPath))
+		if err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("SYNC_MAP_READ_FAILED", err.Error(), "Run media sync first or pass --sync-map", false))
+		}
+		if validation := syncMap.Validate(vsyncmap.ValidationOptions{AllowLowConfidence: false, MinConfidence: 0.65}); len(validation) > 0 {
+			return writeStructuredError(cmd, opts, verrors.Validation("SYNC_MAP_INVALID", strings.Join(validation, "; "), "Fix sync confidence before creating multicam timeline", false))
+		}
+		if durationFrames <= 0 {
+			durationFrames = 900
+		}
+		timeline := buildMulticamTimeline(syncMap, filepath.ToSlash(syncMapPath), durationFrames)
+		status := "planned"
+		if outputPath == "" {
+			outputPath = filepath.Join(projectPath, "timeline", "multicam-timeline.json")
+		}
+		if opts.Commit {
+			raw, err := json.MarshalIndent(timeline, "", "  ")
+			if err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("MULTICAM_ENCODE_FAILED", err.Error(), "Check timeline data", false))
+			}
+			if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("MULTICAM_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+			}
+			if err := os.WriteFile(outputPath, append(raw, '\n'), 0o644); err != nil {
+				return writeStructuredError(cmd, opts, verrors.External("MULTICAM_WRITE_FAILED", err.Error(), "Check project write permissions", false))
+			}
+			status = "written"
+		}
+		return writeOutput(cmd, opts, "multicam create", map[string]any{"status": status, "artifact": filepath.ToSlash(outputPath), "timeline": timeline, "warnings": syncMap.ConfidenceWarnings()})
+	}}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&syncMapPath, "sync-map", "", "vflow-media-sync-map/v1 path")
+	cmd.Flags().StringVar(&outputPath, "output", "", "canonical multicam timeline output path")
+	cmd.Flags().IntVar(&durationFrames, "duration-frames", 900, "timeline duration in frames")
+	return cmd
+}
+
+func buildMulticamTimeline(syncMap vsyncmap.SyncMap, syncMapRef string, durationFrames int) vtimeline.Timeline {
+	tracks := make([]vtimeline.Track, 0, len(syncMap.Sources)*2)
+	angleIDs := make([]string, 0, len(syncMap.Sources))
+	for i, source := range syncMap.Sources {
+		angleID := source.ID
+		angleIDs = append(angleIDs, angleID)
+		videoTrackID := fmt.Sprintf("v%d", i+1)
+		audioTrackID := fmt.Sprintf("a%d", i+1)
+		videoClipID := angleID + "_video"
+		audioClipID := angleID + "_audio"
+		baseClip := vtimeline.Clip{
+			StableClipID:    angleID,
+			SourceMediaID:   source.ID,
+			SyncMapRef:      syncMapRef,
+			MulticamGroupID: "mc_000001",
+			AngleID:         angleID,
+			SourceRange:     vtimeline.FrameRange{StartFrame: 0, EndFrame: durationFrames},
+			TimelineRange:   vtimeline.FrameRange{StartFrame: 0, EndFrame: durationFrames},
+		}
+		videoClip := baseClip
+		videoClip.ID = videoClipID
+		videoClip.TrackID = videoTrackID
+		videoClip.TrackType = "video"
+		videoClip.LinkedClipID = audioClipID
+		audioClip := baseClip
+		audioClip.ID = audioClipID
+		audioClip.TrackID = audioTrackID
+		audioClip.TrackType = "audio"
+		audioClip.LinkedClipID = videoClipID
+		tracks = append(tracks,
+			vtimeline.Track{ID: videoTrackID, TrackType: "video", Name: source.ID + " video", Clips: []vtimeline.Clip{videoClip}},
+			vtimeline.Track{ID: audioTrackID, TrackType: "audio", Name: source.ID + " audio", Clips: []vtimeline.Clip{audioClip}},
+		)
+	}
+	reference := syncMap.ReferenceSourceID
+	if reference == "" && len(angleIDs) > 0 {
+		reference = angleIDs[0]
+	}
+	active := []vtimeline.ActiveAngleSpan{}
+	if reference != "" {
+		active = append(active, vtimeline.ActiveAngleSpan{ID: "span_000001", MulticamGroupID: "mc_000001", AngleID: reference, TimelineRange: vtimeline.FrameRange{StartFrame: 0, EndFrame: durationFrames}})
+	}
+	return vtimeline.Timeline{
+		Version:          "vflow-timeline/v1",
+		FPS:              firstNonEmptyString(syncMap.FrameRate, "30/1"),
+		DurationFrames:   durationFrames,
+		Tracks:           tracks,
+		SyncMapRefs:      []string{syncMapRef},
+		MulticamGroups:   []vtimeline.MulticamGroup{{ID: "mc_000001", SyncMapRef: syncMapRef, ReferenceAngle: reference, AngleIDs: angleIDs}},
+		ActiveAngleSpans: active,
+	}
+}
+
+func multicamCutCommand(opts *globalOptions) *cobra.Command {
+	var projectPath, input string
+	cmd := &cobra.Command{Use: "cut", Short: "validate multicam cut decisions before timeline mutation", RunE: func(cmd *cobra.Command, args []string) error {
+		if input == "" {
+			return writeStructuredError(cmd, opts, verrors.Validation("MISSING_INPUT", "missing --input", "Pass a future vflow-multicam-cut/v1 decision artifact", false))
+		}
+		if _, err := os.Stat(resolveProjectInputPath(projectPath, input)); err != nil {
+			return writeStructuredError(cmd, opts, verrors.External("MULTICAM_CUT_READ_FAILED", err.Error(), "Check --input path", false))
+		}
+		return writeOutput(cmd, opts, "multicam cut", map[string]any{
+			"status":     "unsupported",
+			"input":      filepath.ToSlash(input),
+			"limitation": "vflow-multicam-cut/v1 validation is reserved; create emits canonical multicam metadata for review first",
+		})
+	}}
+	cmd.Flags().StringVar(&projectPath, "project", ".", "project path")
+	cmd.Flags().StringVar(&input, "input", "", "multicam cut decision artifact")
 	return cmd
 }
 

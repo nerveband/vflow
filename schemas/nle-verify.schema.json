@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow NLE verification report",
+  "type": "object",
+  "required": ["version", "status", "target", "segment_count", "issues"],
+  "properties": {
+    "version": {"const": "vflow-nle-verify/v1"},
+    "status": {"type": "string", "enum": ["valid", "review", "blocked"]},
+    "target": {"type": "string"},
+    "segment_count": {"type": "integer", "minimum": 0},
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "severity", "message"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "severity": {"type": "string", "enum": ["info", "review", "blocked"]},
+          "segment_id": {"type": "string"},
+          "message": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

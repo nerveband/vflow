@@ -227,6 +227,55 @@ FCM: NON-DROP FRAME
 	}
 }
 
+func TestNLEVerifyReportsSidecarCoverageProblems(t *testing.T) {
+	project := t.TempDir()
+	sidecarPath := filepath.Join(project, "exports", "sidecars", "otio-vflow-sidecar.json")
+	if err := os.MkdirAll(filepath.Dir(sidecarPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{
+  "version": "vflow-nle-sidecar/v1",
+  "target": "otio",
+  "segments": [
+    {
+      "id": "seg_A",
+      "vflow_segment_id": "seg_A",
+      "source_media_id": "camera_a",
+      "source_frame_in": 0,
+      "source_frame_out": 30,
+      "timeline_frame_in": 0,
+      "timeline_frame_out": 30,
+      "marker_ids": ["m1"],
+      "export_target": "otio",
+      "export_version": "vflow-nle-export/v1"
+    },
+    {
+      "id": "seg_B",
+      "vflow_segment_id": "",
+      "source_media_id": "camera_a",
+      "source_frame_in": 30,
+      "source_frame_out": 60,
+      "timeline_frame_in": 29,
+      "timeline_frame_out": 60,
+      "marker_ids": [],
+      "export_target": "otio",
+      "export_version": "vflow-nle-export/v1"
+    }
+  ]
+}`)
+	if err := os.WriteFile(sidecarPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCLI(t, "nle", "verify", "--project", project, "--sidecar", sidecarPath, "--format", "json", "--format-error", "json")
+	if code != 0 {
+		t.Fatalf("nle verify should report blocked status in JSON without failing process: code=%d stdout=%s stderr=%s", code, out, errOut)
+	}
+	if !strings.Contains(out, `"status": "blocked"`) || !strings.Contains(out, `"MISSING_SIDECAR_ID"`) || !strings.Contains(out, `"TIMELINE_OVERLAP"`) {
+		t.Fatalf("verify output missing sidecar issues: %s", out)
+	}
+}
+
 const cliRoundtripFCPXML = `<?xml version="1.0" encoding="UTF-8"?>
 <fcpxml version="1.11">
   <library><event name="Roundtrip"><project name="vflow"><sequence duration="120/24s"><spine>

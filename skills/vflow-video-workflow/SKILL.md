@@ -29,6 +29,7 @@ description: Run a vflow local-first video workflow from project setup through N
 7. Compile frame-anchored framing and timeline artifacts:
    `vflow framing compile --project <project> --commit --format json`.
    `vflow timeline compile --project <project> --commit --format json`.
+   This writes the compatibility artifact `timeline/compiled-timeline.json` and the canonical `timeline/vflow-timeline.json` (`vflow-timeline/v1`).
 
 8. For finishing work, ask vflow for a contract and adapter recommendation before running external tools:
    `vflow suggest captions --project <project> --format json --format-error json`.
@@ -50,8 +51,14 @@ description: Run a vflow local-first video workflow from project setup through N
 
 12. Export to NLE with sidecar:
     `vflow nle export --project <project> --target fcpxml --commit --format json`.
+    Verify the sidecar before editor handoff:
+    `vflow nle verify --project <project> --sidecar <project>/exports/sidecars/fcpxml-vflow-sidecar.json --format json --format-error json`.
+
+13. For multicam, create a stacked-track canonical timeline from a reviewed sync map:
+    `vflow multicam create --project <project> --sync-map <project>/decisions/media-sync-map.json --commit --format json --format-error json`.
 
 Canonical artifacts live in JSON. `brand.json`, finishing specs, NLE files, Gemini reports, ffmpeg previews, and color notes are adapters, contracts, or reports, not the source of truth.
+Palmier is experimental/external, not a first-party vflow backend. Prefer `vflow-timeline/v1` -> OTIO/XML adapters -> Resolve/FCP/Premiere/Shotcut handoff.
 
 Useful aliases:
 
@@ -62,4 +69,4 @@ Useful aliases:
 - `render qa-render` maps to render verification.
 - `nle to-nle`, `nle from-nle`, and `nle compare-nle` map to NLE export/import/diff.
 
-Do not use vflow to invent crop boxes, store secrets, bypass `--commit`, render captions, composite supers/cards, mix audio, create motion graphics, or treat NLE project files as canonical state.
+Do not use vflow to invent crop boxes, store secrets, bypass `--commit`, render captions, composite supers/cards, mix audio, create motion graphics, make Palmier first-party, or treat NLE project files as canonical state.

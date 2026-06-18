@@ -86,3 +86,56 @@ func TestOTIOExportIsStructuredTimelineJSON(t *testing.T) {
 		t.Fatalf("unexpected OTIO clip: %+v", clip)
 	}
 }
+
+func TestOTIOExportPreservesVideoAndAudioTrackMetadata(t *testing.T) {
+	result := Export(Options{Target: "otio", SourceMediaID: "camera_a", SourceURL: "file:///camera-a.mp4", Rate: 24}, []Segment{
+		{ID: "seg_A_v", TrackID: "v1", TrackKind: "video", LinkedClipID: "seg_A_a", SourceFrameIn: 12, SourceFrameOut: 60, TimelineFrameIn: 0, TimelineFrameOut: 48},
+		{ID: "seg_A_a", TrackID: "a1", TrackKind: "audio", LinkedClipID: "seg_A_v", SourceFrameIn: 12, SourceFrameOut: 60, TimelineFrameIn: 0, TimelineFrameOut: 48},
+	})
+	var got map[string]any
+	if err := json.Unmarshal([]byte(exportText(result)), &got); err != nil {
+		t.Fatalf("invalid otio json: %v", err)
+	}
+	children := got["tracks"].(map[string]any)["children"].([]any)
+	if len(children) != 2 {
+		t.Fatalf("expected separate video/audio OTIO tracks, got %+v", children)
+	}
+	audioTrack := children[1].(map[string]any)
+	if audioTrack["kind"] != "Audio" {
+		t.Fatalf("expected audio track kind, got %+v", audioTrack)
+	}
+	audioClip := audioTrack["children"].([]any)[0].(map[string]any)
+	vflowMeta := audioClip["metadata"].(map[string]any)["vflow"].(map[string]any)
+	if vflowMeta["linked_clip_id"] != "seg_A_v" || vflowMeta["track_id"] != "a1" {
+		t.Fatalf("expected linked clip metadata in OTIO, got %+v", vflowMeta)
+	}
+}
+
+func TestVerifySidecarBlocksCoverageAndDriftProblems(t *testing.T) {
+	report := Verify(Sidecar{
+		Version: "vflow-nle-sidecar/v1",
+		Target:  "otio",
+		Segments: []Segment{
+			{ID: "seg_A", VflowSegmentID: "seg_A", SourceMediaID: "camera_a", SourceFrameIn: 0, SourceFrameOut: 30, TimelineFrameIn: 0, TimelineFrameOut: 30, MarkerIDs: []string{"m1"}, ExportTarget: "otio", ExportVersion: exportVersion},
+			{ID: "seg_B", VflowSegmentID: "", SourceMediaID: "camera_a", SourceFrameIn: 30, SourceFrameOut: 60, TimelineFrameIn: 29, TimelineFrameOut: 60, MarkerIDs: nil, ExportTarget: "otio", ExportVersion: exportVersion},
+		},
+	}, []Segment{{ID: "seg_A", SourceFrameIn: 0, SourceFrameOut: 30, TimelineFrameIn: 0, TimelineFrameOut: 30}, {ID: "seg_B", SourceFrameIn: 30, SourceFrameOut: 60, TimelineFrameIn: 30, TimelineFrameOut: 60}})
+
+	if report.Status != "blocked" {
+		t.Fatalf("expected blocked sidecar verification, got %+v", report)
+	}
+	for _, want := range []string{"MISSING_SIDECAR_ID", "MISSING_MARKER_ID", "TRIM_DRIFT"} {
+		if !hasIssueCode(report.Issues, want) {
+			t.Fatalf("missing issue %s in %+v", want, report.Issues)
+		}
+	}
+}
+
+func hasIssueCode(issues []VerifyIssue, code string) bool {
+	for _, issue := range issues {
+		if issue.Code == code {
+			return true
+		}
+	}
+	return false
+}

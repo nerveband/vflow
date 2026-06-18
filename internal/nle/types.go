@@ -3,6 +3,9 @@ package nle
 type Segment struct {
 	ID                 string   `json:"id"`
 	VflowSegmentID     string   `json:"vflow_segment_id,omitempty"`
+	TrackID            string   `json:"track_id,omitempty"`
+	TrackKind          string   `json:"track_kind,omitempty"`
+	LinkedClipID       string   `json:"linked_clip_id,omitempty"`
 	SourceMediaID      string   `json:"source_media_id,omitempty"`
 	SyncMapRef         string   `json:"sync_map_ref,omitempty"`
 	ReferenceFrameIn   int      `json:"reference_frame_in,omitempty"`
@@ -97,4 +100,19 @@ type ApplyPlan struct {
 	Applied     []Change `json:"applied"`
 	NeedsReview []Change `json:"needs_review"`
 	Blocked     []Change `json:"blocked"`
+}
+
+type VerifyIssue struct {
+	Code      string `json:"code"`
+	Severity  string `json:"severity"`
+	SegmentID string `json:"segment_id,omitempty"`
+	Message   string `json:"message"`
+}
+
+type VerifyReport struct {
+	Version      string        `json:"version"`
+	Status       string        `json:"status"`
+	Target       string        `json:"target"`
+	SegmentCount int           `json:"segment_count"`
+	Issues       []VerifyIssue `json:"issues"`
 }

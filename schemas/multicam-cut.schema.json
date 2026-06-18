@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vflow multicam cut",
+  "type": "object",
+  "required": ["version", "multicam_group_id", "cuts"],
+  "properties": {
+    "version": {"const": "vflow-multicam-cut/v1"},
+    "multicam_group_id": {"type": "string", "minLength": 1},
+    "cuts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["angle_id", "timeline_frame_in", "timeline_frame_out"],
+        "properties": {
+          "angle_id": {"type": "string", "minLength": 1},
+          "timeline_frame_in": {"type": "integer", "minimum": 0},
+          "timeline_frame_out": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
